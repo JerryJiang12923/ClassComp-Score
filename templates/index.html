@@ -196,10 +196,7 @@
                     }),
                     success: function(response) {
                         if (response.success) {
-                            alert('评分提交成功！');
-                            $('#scoreForm')[0].reset();
-                            $('#scoreTableBody').empty();
-                            $('#submitBtn').prop('disabled', true);
+                            window.location.href = response.redirect || "/success";
                         } else {
                             alert(response.message || '提交失败，请重试');
                         }
