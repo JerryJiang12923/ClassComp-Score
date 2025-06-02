@@ -1,2 +1,4 @@
 .env
 exports/
+__pycache__/
+*.pyc
