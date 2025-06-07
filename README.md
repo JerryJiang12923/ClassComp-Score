@@ -1,4 +1,5 @@
-# Computer Scoring Uploading System
+# ClassComp Score
+### Computer Usage Score Uploading System
 
 This is a lightweight web-based scoring system designed for student representatives to evaluate computer usage in other classrooms. It supports:
 
