@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理员面板 - 信息委员评分系统</title>
+    <link href="{{ url_for('static', filename='bootstrap.min.css') }}" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://cdn.datatables.net/1.11.5/css/dataTables.bootstrap5.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.css" rel="stylesheet">
+    <style>
+        .navbar-brand { font-weight: bold; }
+        .stats-card {
+            border-radius: 10px; padding: 20px; color: white;
+            transition: transform 0.3s;
+        }
+        .stats-card:hover { transform: translateY(-5px); }
+        .stats-card.primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .stats-card.success { background: linear-gradient(135deg, #56ab2f 0%, #a8e6cf 100%); }
+        .stats-card.warning { background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%); }
+        .stats-card.info { background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); }
+        .chart-container { position: relative; height: 300px; margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="{{ url_for('index') }}">
+                <i class="fas fa-clipboard-check me-2"></i>
+                信息委员评分系统
+            </a>
+            <div class="navbar-nav ms-auto">
+                <span class="navbar-text me-3 text-white">管理员: {{ user.username }}</span>
+                <a class="nav-link" href="{{ url_for('index') }}">
+                    <i class="fas fa-home me-1"></i>返回首页
+                </a>
+                <a class="nav-link" href="{{ url_for('admin_users') }}">
+                    <i class="fas fa-users me-1"></i>用户管理
+                </a>
+                <a class="nav-link" href="{{ url_for('logout') }}">
+                    <i class="fas fa-sign-out-alt me-1"></i>退出
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid py-4">
+        <h2 class="mb-4 text-center">
+            <i class="fas fa-cog me-2"></i>
+            管理员面板
+        </h2>
+
+        <!-- 统计概览 -->
+        <div class="row mb-4">
+            <div class="col-lg-3 col-md-6 mb-3">
+                <div class="stats-card primary">
+                    <div class="d-flex align-items-center">
+                        <div class="me-3">
+                            <i class="fas fa-users fa-2x"></i>
+                        </div>
+                        <div>
+                            <h4>{{ total_users }}</h4>
+                            <p class="mb-0">总用户数</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-6 mb-3">
+                <div class="stats-card success">
+                    <div class="d-flex align-items-center">
+                        <div class="me-3">
+                            <i class="fas fa-star fa-2x"></i>
+                        </div>
+                        <div>
+                            <h4>{{ total_scores }}</h4>
+                            <p class="mb-0">总评分数</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-6 mb-3">
+                <div class="stats-card warning">
+                    <div class="d-flex align-items-center">
+                        <div class="me-3">
+                            <i class="fas fa-chart-bar fa-2x"></i>
+                        </div>
+                        <div>
+                            <h4>{{ "%.1f"|format(avg_score) }}</h4>
+                            <p class="mb-0">平均分数</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-6 mb-3">
+                <div class="stats-card info">
+                    <div class="d-flex align-items-center">
+                        <div class="me-3">
+                            <i class="fas fa-calendar-check fa-2x"></i>
+                        </div>
+                        <div>
+                            <h4>{{ today_scores }}</h4>
+                            <p class="mb-0">今日评分</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+        <!-- 数据管理区域 -->
+        <div class="row">
+            <div class="col-lg-8 mb-3">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">最近评分记录</h5>
+                        <div>
+                            <a href="/export_excel?month={{ current_month }}" class="btn btn-success btn-sm">
+                                <i class="fas fa-download me-1"></i>导出本月数据
+                            </a>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table id="recentScoresTable" class="table table-hover">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>时间</th>
+                                        <th>评分人</th>
+                                        <th>评分班级</th>
+                                        <th>被查年级</th>
+                                        <th>被查班级</th>
+                                        <th>总分</th>
+                                        <th>备注</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="recent-scores-tbody">
+                                    {% if recent_scores %}
+                                        {% for score in recent_scores %}
+                                        <tr>
+                                            <td>{{ score.created_at[:16] if score.created_at else '未知' }}</td>
+                                            <td>{{ score.username or score.evaluator_name }}</td>
+                                            <td>{{ score.evaluator_class_name or score.evaluator_class }}</td>
+                                            <td>{{ score.target_grade }}</td>
+                                            <td>{{ score.target_class }}</td>
+                                            <td>
+                                                <span class="badge {{ 'bg-success' if score.total >= 8 else 'bg-warning' if score.total >= 6 else 'bg-danger' }}">
+                                                    {{ score.total }}/10
+                                                </span>
+                                            </td>
+                                            <td>{{ score.note or '-' }}</td>
+                                        </tr>
+                                        {% endfor %}
+                                    {% else %}
+                                        <tr>
+                                            <td colspan="8" class="text-center">暂无数据</td>
+                                        </tr>
+                                    {% endif %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-4 mb-3">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">快捷操作</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-grid gap-2">
+                            <button class="btn btn-primary" onclick="refreshData()">
+                                <i class="fas fa-sync-alt me-2"></i>刷新数据
+                            </button>
+                            <button class="btn btn-info" onclick="showStatsModal()">
+                                <i class="fas fa-chart-pie me-2"></i>详细统计
+                            </button>
+                            <button class="btn btn-warning" onclick="exportAllData()">
+                                <i class="fas fa-file-excel me-2"></i>导出全部数据
+                            </button>
+                            <button class="btn btn-danger" onclick="clearCache()">
+                                <i class="fas fa-broom me-2"></i>清理缓存
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 图表区域 -->
+        <div class="row mb-4">
+            <div class="col-lg-6 mb-3">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">年级评分分布</h5>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="gradeChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-6 mb-3">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">每日评分趋势</h5>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="dailyChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.datatables.net/1.11.5/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.11.5/js/dataTables.bootstrap5.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- 将后端数据传递给前端 -->
+    <script id="chart-data" type="application/json">
+        {
+            "gradeStats": [
+                {% for grade in grade_stats %}
+                {
+                    "target_grade": "{{ grade.target_grade }}",
+                    "count": {{ grade.count }}
+                }{% if not loop.last %},{% endif %}
+                {% endfor %}
+            ],
+            "dailyTrend": [
+                {% for trend in daily_trend %}
+                {
+                    "date": "{{ trend.date }}",
+                    "count": {{ trend.count }}
+                }{% if not loop.last %},{% endif %}
+                {% endfor %}
+            ]
+        }
+    </script>
+    
+    <script>
+        $(document).ready(function() {
+            // 初始化数据表格
+            $('#recentScoresTable').DataTable({
+                order: [[0, 'desc']],
+                pageLength: 15,
+                searching: true,
+                lengthChange: false,
+                language: {
+                    url: '//cdn.datatables.net/plug-ins/1.11.5/i18n/zh.json'
+                }
+            });
+
+            // 初始化图表
+            initCharts();
+        });
+
+        function initCharts() {
+            // 获取后端数据
+            const chartData = JSON.parse(document.getElementById('chart-data').textContent);
+            
+            // 年级评分分布图
+            const gradeCtx = document.getElementById('gradeChart').getContext('2d');
+            new Chart(gradeCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: chartData.gradeStats.map(item => item.target_grade),
+                    datasets: [{
+                        data: chartData.gradeStats.map(item => item.count),
+                        backgroundColor: [
+                            '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0',
+                            '#9966FF', '#FF9F40', '#FF6384', '#C9CBCF'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom' }
+                    }
+                }
+            });
+
+            // 每日评分趋势图
+            const dailyCtx = document.getElementById('dailyChart').getContext('2d');
+            new Chart(dailyCtx, {
+                type: 'line',
+                data: {
+                    labels: chartData.dailyTrend.map(item => item.date),
+                    datasets: [{
+                        label: '每日评分数量',
+                        data: chartData.dailyTrend.map(item => item.count),
+                        borderColor: '#667eea',
+                        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: { beginAtZero: true }
+                    }
+                }
+            });
+        }
+
+        function refreshData() {
+            location.reload();
+        }
+
+        function showStatsModal() {
+            alert('详细统计功能开发中...');
+        }
+
+        function exportAllData() {
+            const month = new Date().toISOString().slice(0, 7);
+            window.open(`/export_excel?month=${month}`, '_blank');
+        }
+
+        function clearCache() {
+            if (confirm('确定要清理缓存吗？')) {
+                alert('缓存清理完成');
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+Flask>=2.0
+Flask-Cors>=3.0
+Flask-Login>=0.6.3
+Flask-WTF>=1.2.1
+WTForms>=3.1.0
+Werkzeug>=2.3.0
+pandas>=2.0
+pytz>=2023.3
+python-dotenv>=1.0
+psycopg2-binary>=2.9
+XlsxWriter>=3.0

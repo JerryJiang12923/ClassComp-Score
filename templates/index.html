@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>信息委员评分系统</title>
+  <link href="{{ url_for('static', filename='bootstrap.min.css') }}" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+  <style>
+    .score-input {
+      width: 60px;
+      text-align: center;
+    }
+    .class-row:hover {
+      background-color: #f8f9fa;
+    }
+    .navbar-brand {
+      font-weight: bold;
+    }
+    .user-info {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+  </style>
+</head>
+<body>
+  <!-- 导航栏 -->
+  <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+    <div class="container">
+      <a class="navbar-brand" href="{{ url_for('index') }}">
+        <i class="fas fa-clipboard-check me-2"></i>
+        信息委员评分系统
+      </a>
+      <div class="navbar-nav ms-auto">
+        <span class="navbar-text me-3">
+          欢迎, {{ user.username }} ({{ user.class_name }})
+        </span>
+        <a class="nav-link" href="{{ url_for('my_scores') }}">
+          <i class="fas fa-history me-1"></i>我的评分
+        </a>
+        {% if user.is_admin() %}
+        <a class="nav-link" href="{{ url_for('admin') }}">
+          <i class="fas fa-cog me-1"></i>管理面板
+        </a>
+        {% endif %}
+        <a class="nav-link" href="{{ url_for('logout') }}">
+          <i class="fas fa-sign-out-alt me-1"></i>退出
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container py-4">
+    <!-- 用户信息卡片 -->
+    <div class="user-info">
+      <div class="d-flex justify-content-between align-items-center">
+        <div>
+          <h5 class="mb-1">
+            <i class="fas fa-user me-2"></i>
+            {{ user.username }}
+          </h5>
+          <p class="mb-0 opacity-75">
+            班级: {{ user.class_name }} | 角色: {{ user.role }}
+          </p>
+        </div>
+        <div class="text-end">
+          <small class="opacity-75">今天是</small>
+          <br>
+          <span id="current-date"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card mb-4">
+      <div class="card-header bg-primary text-white">
+        <h5 class="mb-0">评分人信息</h5>
+      </div>
+      <div class="card-body">
+        <div class="row">
+          <div class="col-md-6 mb-3">
+            <label class="form-label fw-bold">姓名</label>
+            <div class="form-control-plaintext fw-bold text-primary">{{ user.username }}</div>
+          </div>
+          <div class="col-md-6 mb-3">
+            <label class="form-label fw-bold">信息委员班级</label>
+            <div class="form-control-plaintext fw-bold text-primary">{{ user.class_name }}</div>
+          </div>
+        </div>
+        <div class="row">
+          <div class="col-md-6 mb-3">
+            <label for="checked_grade" class="form-label fw-bold">被查年级</label>
+            {% if auto_target_grade %}
+            <!-- 自动识别到目标年级，显示为只读 -->
+            <div class="form-control-plaintext fw-bold text-success">
+              {{ auto_target_grade }} 
+              <small class="text-muted">(自动识别)</small>
+            </div>
+            <input type="hidden" id="checked_grade" name="checked_grade" value="{{ auto_target_grade }}">
+            {% else %}
+            <!-- 无法自动识别，显示下拉选择 -->
+            <select id="checked_grade" name="checked_grade" class="form-select" required>
+              <option value="">请选择年级</option>
+              <option value="中预">中预</option>
+              <option value="初一">初一</option>
+              <option value="初二">初二</option>
+              <option value="高一">高一</option>
+              <option value="高二">高二</option>
+              <option value="VCE">VCE</option>
+            </select>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header bg-primary text-white">
+        <h5 class="mb-0">班级评分表</h5>
+      </div>
+      <div class="card-body">
+        <div class="table-responsive">
+          <table class="table table-bordered table-hover" id="scoreTable">
+            <thead class="table-light">
+              <tr>
+                <th>班级</th>
+                <th>电脑整洁 (3分)</th>
+                <th>物品摆放 (3分)</th>
+                <th>使用情况 (4分)</th>
+                <th>总分</th>
+                <th>备注</th>
+              </tr>
+            </thead>
+            <tbody id="scoreTableBody"></tbody>
+          </table>
+        </div>
+
+        <div class="d-grid gap-2 mt-3">
+          <button type="button" id="submitBtn" class="btn btn-primary btn-lg" disabled>
+            <span id="submitText">提交全部评分</span>
+            <span id="submitSpinner" class="spinner-border spinner-border-sm d-none" role="status"></span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script>
+    $(function () {
+      // 设置当前日期显示
+      const today = new Date();
+      $('#current-date').text(today.toLocaleDateString('zh-CN', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        weekday: 'long'
+      }));
+
+      const classData = {
+        '中预': ['中预1班','中预2班','中预3班','中预4班','中预5班','中预6班','中预7班','中预8班'],
+        '初一': ['初一1班','初一2班','初一3班','初一4班','初一5班','初一6班','初一7班','初一8班'],
+        '初二': ['初二1班','初二2班','初二3班','初二4班','初二5班','初二6班','初二7班','初二8班'],
+        '高一': ['高一1班','高一2班','高一3班','高一4班','高一5班','高一6班'],
+        '高二': ['高二1班','高二2班','高二3班','高二4班','高二5班','高二6班','高二7班','高二8班'],
+        'VCE':  ['高一VCE','高二VCE']
+      };
+
+      function loadClassTable() {
+        const grade = $('#checked_grade').val();
+        const $body = $('#scoreTableBody');
+        $body.empty();
+
+        if (!grade || !classData[grade]) {
+          $('#submitBtn').prop('disabled', true);
+          return;
+        }
+
+        $('#submitBtn').prop('disabled', false);
+
+        classData[grade].forEach(className => {
+          const row = `
+            <tr class="class-row" data-class="${className}">
+              <td>${className}</td>
+              <td><input type="number" class="form-control score-input score1" min="0" max="3" value="3" required></td>
+              <td><input type="number" class="form-control score-input score2" min="0" max="3" value="3" required></td>
+              <td><input type="number" class="form-control score-input score3" min="0" max="4" value="4" required></td>
+              <td><input type="number" class="form-control score-input total" value="10" readonly></td>
+              <td><input type="text" class="form-control note" placeholder="备注"></td>
+            </tr>`;
+          $body.append(row);
+        });
+
+        $('.score1, .score2, .score3').on('input', function () {
+          const $row = $(this).closest('tr');
+          let score1 = parseInt($row.find('.score1').val()) || 0;
+          let score2 = parseInt($row.find('.score2').val()) || 0;
+          let score3 = parseInt($row.find('.score3').val()) || 0;
+
+          if (score1 > 3) { score1 = 3; $row.find('.score1').val(3); }
+          if (score1 < 0) { score1 = 0; $row.find('.score1').val(0); }
+          if (score2 > 3) { score2 = 3; $row.find('.score2').val(3); }
+          if (score2 < 0) { score2 = 0; $row.find('.score2').val(0); }
+          if (score3 > 4) { score3 = 4; $row.find('.score3').val(4); }
+          if (score3 < 0) { score3 = 0; $row.find('.score3').val(0); }
+
+          $row.find('.total').val(score1 + score2 + score3);
+        });
+      }
+
+      // 年级选择变化时重新加载班级表格
+      $('#checked_grade').change(loadClassTable);
+
+      // 页面加载完成后，如果有自动识别的年级，立即加载班级表格
+      const autoTargetGrade = '{{ auto_target_grade or "" }}';
+      if (autoTargetGrade) {
+        loadClassTable();
+      }
+
+      $('#submitBtn').click(function () {
+        const grade = $('#checked_grade').val();
+
+        if (!grade) {
+          alert('请选择被查年级');
+          return;
+        }
+
+        const scores = [];
+        let valid = true;
+
+        $('#scoreTableBody tr').each(function () {
+          const className = $(this).data('class');
+          let s1 = parseInt($(this).find('.score1').val());
+          let s2 = parseInt($(this).find('.score2').val());
+          let s3 = parseInt($(this).find('.score3').val());
+          const note = $(this).find('.note').val().trim();
+
+          if ([s1, s2, s3].some(v => isNaN(v))) {
+            valid = false;
+            return false;
+          }
+
+          s1 = Math.max(0, Math.min(s1, 3));
+          s2 = Math.max(0, Math.min(s2, 3));
+          s3 = Math.max(0, Math.min(s3, 4));
+
+          scores.push({ className, score1: s1, score2: s2, score3: s3, total: s1 + s2 + s3, note });
+        });
+
+        if (!valid) {
+          alert('请填写所有班级的评分');
+          return;
+        }
+
+        const $btn = $(this);
+        $btn.prop('disabled', true);
+        $('#submitText').text('提交中...');
+        $('#submitSpinner').removeClass('d-none');
+
+        $.ajax({
+          url: '/submit_scores',
+          type: 'POST',
+          contentType: 'application/json',
+          data: JSON.stringify({
+            target_grade: grade,
+            scores: scores
+          }),
+          success: res => {
+            if (res.success) {
+              alert(res.message || '提交成功！');
+              window.location.href = '/success';
+            } else {
+              if (res.errors && res.errors.length > 0) {
+                alert('提交失败：' + res.errors.join('\\n'));
+              } else {
+                alert(res.message || '提交失败');
+              }
+            }
+          },
+          error: () => alert('网络错误，请重试'),
+          complete: () => {
+            $btn.prop('disabled', false);
+            $('#submitText').text('提交全部评分');
+            $('#submitSpinner').addClass('d-none');
+          }
+        });
+      });
+    });
+  </script>
+</body>
+</html>

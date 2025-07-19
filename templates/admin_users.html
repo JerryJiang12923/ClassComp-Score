@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>用户管理 - 信息委员评分系统</title>
+    <link href="{{ url_for('static', filename='bootstrap.min.css') }}" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .user-card {
+            transition: all 0.3s ease;
+        }
+        .user-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .role-admin { background: linear-gradient(135deg, #ff6b6b, #ee5a24); }
+        .role-teacher { background: linear-gradient(135deg, #ffa726, #ff9800); }
+        .role-student { background: linear-gradient(135deg, #42a5f5, #1976d2); }
+        .stats-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .action-btn {
+            transition: all 0.2s ease;
+        }
+        .action-btn:hover {
+            transform: scale(1.1);
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="{{ url_for('index') }}">
+                <i class="fas fa-clipboard-check me-2"></i>
+                信息委员评分系统 - 管理后台
+            </a>
+            <div class="navbar-nav ms-auto">
+                <span class="navbar-text me-3">欢迎, {{ user.username }} (管理员)</span>
+                <a class="nav-link" href="{{ url_for('admin') }}">
+                    <i class="fas fa-chart-bar me-1"></i>管理面板
+                </a>
+                <a class="nav-link" href="{{ url_for('my_scores') }}">
+                    <i class="fas fa-history me-1"></i>评分历史
+                </a>
+                <a class="nav-link" href="{{ url_for('logout') }}">
+                    <i class="fas fa-sign-out-alt me-1"></i>退出
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container py-4">
+        <h2 class="mb-4">
+            <i class="fas fa-users-cog me-2"></i>
+            校内用户管理系统
+        </h2>
+
+        <!-- 统计卡片 -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card stats-card">
+                    <div class="card-body text-center">
+                        <i class="fas fa-users fa-2x mb-2"></i>
+                        <h5 class="card-title">总用户数</h5>
+                        <p class="card-text h4">{{ users|length }}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stats-card">
+                    <div class="card-body text-center">
+                        <i class="fas fa-user-graduate fa-2x mb-2"></i>
+                        <h5 class="card-title">学生用户</h5>
+                        <p class="card-text h4">{{ users|selectattr('role', 'equalto', 'student')|list|length }}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stats-card">
+                    <div class="card-body text-center">
+                        <i class="fas fa-chalkboard-teacher fa-2x mb-2"></i>
+                        <h5 class="card-title">教师用户</h5>
+                        <p class="card-text h4">{{ users|selectattr('role', 'equalto', 'teacher')|list|length }}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card stats-card">
+                    <div class="card-body text-center">
+                        <i class="fas fa-user-shield fa-2x mb-2"></i>
+                        <h5 class="card-title">管理员</h5>
+                        <p class="card-text h4">{{ users|selectattr('role', 'equalto', 'admin')|list|length }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 创建用户表单 -->
+        <div class="card mb-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">
+                    <i class="fas fa-user-plus me-2"></i>
+                    创建新用户
+                </h5>
+            </div>
+            <div class="card-body">
+                <form id="createUserForm">
+                    <div class="row">
+                        <div class="col-md-3">
+                            <label class="form-label">用户名</label>
+                            <input type="text" name="username" class="form-control" required 
+                                   placeholder="如：张三" maxlength="20">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">密码</label>
+                            <input type="text" name="password" class="form-control" required 
+                                   placeholder="初始密码" maxlength="20">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">班级</label>
+                            <input type="text" name="class_name" class="form-control" required 
+                                   placeholder="如：中预1班" maxlength="20">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">角色</label>
+                            <select name="role" class="form-select">
+                                <option value="student">学生</option>
+                                <option value="teacher">老师</option>
+                                <option value="admin">管理员</option>
+                            </select>
+                        </div>
+                        <div class="col-md-1">
+                            <label class="form-label">操作</label>
+                            <button type="submit" class="btn btn-success w-100">
+                                <i class="fas fa-plus"></i>
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- 批量操作 -->
+        <div class="card mb-4">
+            <div class="card-header bg-warning text-dark">
+                <h5 class="mb-0">
+                    <i class="fas fa-tools me-2"></i>
+                    批量操作
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <button type="button" class="btn btn-danger" id="bulkDeleteBtn" disabled>
+                            <i class="fas fa-trash me-2"></i>批量删除
+                        </button>
+                        <button type="button" class="btn btn-secondary" id="selectAllBtn">
+                            <i class="fas fa-check-square me-2"></i>全选
+                        </button>
+                        <button type="button" class="btn btn-light" id="clearSelectionBtn" style="display:none;">
+                            <i class="fas fa-times me-2"></i>取消全选
+                        </button>
+                    </div>
+                    <div class="col-md-6 text-end">
+                        <button type="button" class="btn btn-info" id="exportUsersBtn">
+                            <i class="fas fa-download me-2"></i>导出用户列表
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 用户列表 -->
+        <div class="card">
+            <div class="card-header bg-light">
+                <h5 class="mb-0">
+                    <i class="fas fa-list me-2"></i>
+                    用户列表
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if users %}
+                <div class="table-responsive">
+                    <table class="table table-hover" id="usersTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th width="5%">
+                                    <input type="checkbox" id="selectAll" class="form-check-input">
+                                </th>
+                                <th>用户名</th>
+                                <th>班级</th>
+                                <th>角色</th>
+                                <th>创建时间</th>
+                                <th>评分次数</th>
+                                <th width="15%">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for user in users %}
+                            <tr data-user-id="{{ user.id }}" data-username="{{ user.username }}">
+                                <td>
+                                    {% if user.id != current_user.id %}
+                                    <input type="checkbox" class="user-checkbox form-check-input" value="{{ user.id }}">
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <strong>{{ user.username }}</strong>
+                                    {% if user.id == current_user.id %}
+                                    <span class="badge bg-secondary ms-1">当前用户</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ user.class_name }}</td>
+                                <td>
+                                    {% if user.role == 'admin' %}
+                                        <span class="badge bg-danger">管理员</span>
+                                    {% elif user.role == 'teacher' %}
+                                        <span class="badge bg-warning">老师</span>
+                                    {% else %}
+                                        <span class="badge bg-primary">学生</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ user.created_at[:16] if user.created_at else '未知' }}</td>
+                                <td>
+                                    <span class="badge bg-info">{{ user.score_count }}</span>
+                                </td>
+                                <td>
+                                    {% if user.id != current_user.id %}
+                                    <button class="btn btn-sm btn-danger action-btn delete-user" 
+                                            data-user-id="{{ user.id }}" 
+                                            data-username="{{ user.username }}">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                    {% else %}
+                                    <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-4">
+                    <i class="fas fa-users fa-3x text-muted mb-3"></i>
+                    <p class="text-muted">暂无用户</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- 确认删除模态框 -->
+    <div class="modal fade" id="deleteModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">确认删除</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>确定要删除用户 <strong id="deleteUsername"></strong> 吗？</p>
+                    <p class="text-danger">此操作不可撤销，该用户的所有数据将被删除。</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-danger" id="confirmDelete">删除</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            let selectedUsers = [];
+            let currentUserId = null;
+
+            // 创建用户
+            $('#createUserForm').on('submit', function(e) {
+                e.preventDefault();
+                const formData = new FormData(this);
+                const data = {
+                    action: 'create',
+                    username: formData.get('username'),
+                    password: formData.get('password'),
+                    class_name: formData.get('class_name'),
+                    role: formData.get('role')
+                };
+
+                $.ajax({
+                    url: '/admin/users',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify(data),
+                    success: function(res) {
+                        if (res.success) {
+                            alert(res.message);
+                            location.reload();
+                        } else {
+                            alert('创建失败：' + res.message);
+                        }
+                    },
+                    error: function() {
+                        alert('网络错误，请重试');
+                    }
+                });
+            });
+
+            // 更新选择状态
+            function updateSelection() {
+                selectedUsers = $('.user-checkbox:checked').map(function() {
+                    return $(this).val();
+                }).get();
+                
+                $('#bulkDeleteBtn').prop('disabled', selectedUsers.length === 0);
+                
+                if (selectedUsers.length > 0) {
+                    $('#selectAllBtn').hide();
+                    $('#clearSelectionBtn').show();
+                } else {
+                    $('#selectAllBtn').show();
+                    $('#clearSelectionBtn').hide();
+                }
+            }
+
+            // 全选/取消全选
+            $('#selectAll').on('change', function() {
+                $('.user-checkbox:not(:disabled)').prop('checked', this.checked);
+                updateSelection();
+            });
+
+            $('#selectAllBtn').click(function() {
+                $('#selectAll').prop('checked', true).trigger('change');
+            });
+
+            $('#clearSelectionBtn').click(function() {
+                $('#selectAll, .user-checkbox').prop('checked', false);
+                updateSelection();
+            });
+
+            $('.user-checkbox').on('change', updateSelection);
+
+            // 单个删除
+            $('.delete-user').click(function() {
+                currentUserId = $(this).data('user-id');
+                const username = $(this).data('username');
+                $('#deleteUsername').text(username);
+                $('#deleteModal').modal('show');
+            });
+
+            // 确认删除
+            $('#confirmDelete').click(function() {
+                if (currentUserId) {
+                    $.ajax({
+                        url: '/admin/users',
+                        type: 'POST',
+                        contentType: 'application/json',
+                        data: JSON.stringify({
+                            action: 'delete',
+                            user_id: currentUserId
+                        }),
+                        success: function(res) {
+                            if (res.success) {
+                                alert(res.message);
+                                location.reload();
+                            } else {
+                                alert('删除失败：' + res.message);
+                            }
+                            $('#deleteModal').modal('hide');
+                        },
+                        error: function() {
+                            alert('网络错误，请重试');
+                            $('#deleteModal').modal('hide');
+                        }
+                    });
+                }
+            });
+
+            // 批量删除
+            $('#bulkDeleteBtn').click(function() {
+                if (selectedUsers.length === 0) return;
+                
+                if (confirm(`确定要删除选中的 ${selectedUsers.length} 个用户吗？此操作不可撤销！`)) {
+                    $.ajax({
+                        url: '/admin/users',
+                        type: 'POST',
+                        contentType: 'application/json',
+                        data: JSON.stringify({
+                            action: 'bulk_delete',
+                            user_ids: selectedUsers
+                        }),
+                        success: function(res) {
+                            if (res.success) {
+                                alert(res.message);
+                                location.reload();
+                            } else {
+                                alert('删除失败：' + res.message);
+                            }
+                        },
+                        error: function() {
+                            alert('网络错误，请重试');
+                        }
+                    });
+                }
+            });
+
+            // 导出用户列表
+            $('#exportUsersBtn').click(function() {
+                const csvContent = "用户名,班级,角色,创建时间,评分次数\n" +
+                    $('#usersTable tbody tr').map(function() {
+                        const username = $(this).data('username');
+                        const className = $(this).find('td:eq(2)').text();
+                        const role = $(this).find('.badge').text();
+                        const createdAt = $(this).find('td:eq(4)').text();
+                        const scoreCount = $(this).find('td:eq(5) .badge').text();
+                        return `"${username}","${className}","${role}","${createdAt}","${scoreCount}"`;
+                    }).get().join('\n');
+
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement('a');
+                const url = URL.createObjectURL(blob);
+                link.setAttribute('href', url);
+                link.setAttribute('download', '用户列表.csv');
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            });
+        });
+    </script>
+</body>
+</html>
