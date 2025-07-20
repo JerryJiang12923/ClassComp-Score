@@ -189,6 +189,9 @@
                             <button class="btn btn-info" onclick="showStatsModal()">
                                 <i class="fas fa-chart-pie me-2"></i>详细统计
                             </button>
+                            <button class="btn btn-success" onclick="showEnvironmentInfo()">
+                                <i class="fas fa-server me-2"></i>环境信息
+                            </button>
                             <button class="btn btn-warning" onclick="exportAllData()">
                                 <i class="fas fa-file-excel me-2"></i>导出全部数据
                             </button>
@@ -231,6 +234,121 @@
                     <div class="card-body">
                         <canvas id="dailyChart"></canvas>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 环境信息模态框 -->
+    <div class="modal fade" id="environmentModal" tabindex="-1" aria-labelledby="environmentModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title" id="environmentModalLabel">
+                        <i class="fas fa-server me-2"></i>系统环境信息
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6 class="text-primary mb-3"><i class="fas fa-database me-2"></i>数据库配置</h6>
+                            <table class="table table-sm table-borderless">
+                                <tbody>
+                                    <tr>
+                                        <td class="fw-bold">数据库类型:</td>
+                                        <td>
+                                            <span class="badge {{ 'bg-primary' if environment_info.database_type == 'PostgreSQL' else 'bg-secondary' }}">
+                                                {{ environment_info.database_type }}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td class="fw-bold">连接信息:</td>
+                                        <td><code class="small">{{ environment_info.database_url }}</code></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="col-md-6">
+                            <h6 class="text-primary mb-3"><i class="fas fa-flask me-2"></i>Flask 配置</h6>
+                            <table class="table table-sm table-borderless">
+                                <tbody>
+                                    <tr>
+                                        <td class="fw-bold">运行环境:</td>
+                                        <td>
+                                            <span class="badge {{ 'bg-success' if environment_info.flask_env == 'production' else 'bg-warning' }}">
+                                                {{ environment_info.flask_env.upper() }}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td class="fw-bold">调试模式:</td>
+                                        <td>
+                                            <span class="badge {{ 'bg-danger' if environment_info.debug_mode else 'bg-success' }}">
+                                                {{ '开启' if environment_info.debug_mode else '关闭' }}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td class="fw-bold">WSGI服务器:</td>
+                                        <td>
+                                            <span class="badge bg-info">{{ environment_info.wsgi_server }}</span>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <hr>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6 class="text-primary mb-3"><i class="fas fa-desktop me-2"></i>系统信息</h6>
+                            <table class="table table-sm table-borderless">
+                                <tbody>
+                                    <tr>
+                                        <td class="fw-bold">操作系统:</td>
+                                        <td><code class="small">{{ environment_info.platform }}</code></td>
+                                    </tr>
+                                    <tr>
+                                        <td class="fw-bold">Python版本:</td>
+                                        <td><span class="badge bg-secondary">{{ environment_info.python_version }}</span></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="col-md-6">
+                            <h6 class="text-primary mb-3"><i class="fas fa-memory me-2"></i>硬件资源</h6>
+                            <table class="table table-sm table-borderless">
+                                <tbody>
+                                    <tr>
+                                        <td class="fw-bold">CPU核心数:</td>
+                                        <td><span class="badge bg-info">{{ environment_info.cpu_count }} 核</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td class="fw-bold">总内存:</td>
+                                        <td><span class="badge bg-primary">{{ environment_info.memory_total }}</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td class="fw-bold">可用内存:</td>
+                                        <td><span class="badge bg-success">{{ environment_info.memory_available }}</span></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="alert alert-info mt-3 mb-0">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>部署状态:</strong> 
+                        {% if environment_info.flask_env == 'production' and not environment_info.debug_mode %}
+                            <span class="text-success">✅ 生产环境配置正常</span>
+                        {% else %}
+                            <span class="text-warning">⚠️ 当前为开发环境</span>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
                 </div>
             </div>
         </div>
@@ -381,9 +499,12 @@
             alert('详细统计功能开发中...');
         }
 
+        function showEnvironmentInfo() {
+            $('#environmentModal').modal('show');
+        }
+
         function exportAllData() {
-            const month = new Date().toISOString().slice(0, 7);
-            window.open(`/export_excel?month=${month}`, '_blank');
+            window.open('/export_excel?all_data=true', '_blank');
         }
 
         function clearCache() {

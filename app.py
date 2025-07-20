@@ -1,7 +1,9 @@
 import os
-import sqlite3
+import sys
 import shutil
 import json
+import re
+import platform
 from datetime import datetime, timedelta
 from calendar import monthrange
 import pytz
@@ -10,6 +12,22 @@ from flask_cors import CORS
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 import pandas as pd
 from werkzeug.security import generate_password_hash
+
+# 导入安全组件
+from security_constants import ALLOWED_GRADES, PERIOD_CONSTANTS, USER_ROLES, SCORE_VALIDATION
+from input_validator import InputValidator, SQLSafetyHelper
+from security_middleware import security_middleware
+
+def validate_grade_input(grade):
+    """验证年级输入，防止SQL注入"""
+    return InputValidator.validate_grade(grade)
+
+def sanitize_teacher_grade(teacher_grade):
+    """清理教师年级输入"""
+    if not teacher_grade or not InputValidator.validate_grade(teacher_grade):
+        return None
+    return teacher_grade
+
 
 from db import get_conn, put_conn
 from models import User, Score
@@ -38,6 +56,19 @@ def load_user(user_id):
 # 导出目录配置
 EXPORT_FOLDER = os.getenv("EXPORT_FOLDER", "exports")
 os.makedirs(EXPORT_FOLDER, exist_ok=True)
+
+@app.route('/health')
+def health_check():
+    """健康检查端点，用于 Render 等平台检测服务状态"""
+    try:
+        # 简单的数据库连接测试
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute('SELECT 1')
+        put_conn(conn)
+        return jsonify({"status": "healthy", "timestamp": datetime.now().isoformat()}), 200
+    except Exception as e:
+        return jsonify({"status": "unhealthy", "error": str(e)}), 503
 
 @app.route('/')
 def index():
@@ -88,7 +119,8 @@ def index():
             }
         else:
             current_period = None
-    except:
+    except Exception as e:
+        print(f"Error: {e}")
         current_period = None
     
     return render_template('index.html', 
@@ -97,6 +129,8 @@ def index():
                           current_period=current_period)
 
 @app.route('/login', methods=['GET', 'POST'])
+@security_middleware.rate_limit(max_requests=50, window=300)  # 5分钟最多50次尝试（开发友好）
+@security_middleware.login_protection
 def login():
     if current_user.is_authenticated:
         return redirect(url_for('index'))
@@ -296,19 +330,86 @@ def admin_semester():
                     action = data.get('action')
                     
                     if action == 'export_backup':
-                        # 导出学期数据备份 - 直接返回文件下载
+                        # 数据备份功能
+                        db_url = os.getenv("DATABASE_URL", "sqlite:///classcomp.db")
                         backup_time = datetime.now().strftime('%Y%m%d_%H%M%S')
-                        backup_filename = f'semester_backup_{backup_time}.db'
-                        backup_path = os.path.join('exports', backup_filename)
                         
-                        # 确保exports目录存在
-                        os.makedirs('exports', exist_ok=True)
+                        if db_url.startswith('sqlite'):
+                            # SQLite 文件备份
+                            backup_filename = f'semester_backup_{backup_time}.db'
+                            backup_path = os.path.join(EXPORT_FOLDER, backup_filename)
+                            
+                            # 确保exports目录存在
+                            os.makedirs(EXPORT_FOLDER, exist_ok=True)
+                            
+                            # 复制数据库文件（仅限 SQLite）
+                            import re
+                            db_filename = re.search(r'sqlite:///(.+)', db_url).group(1)
+                            if not os.path.isabs(db_filename):
+                                db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), db_filename)
+                            else:
+                                db_path = db_filename
+                            
+                            shutil.copy2(db_path, backup_path)
+                            
+                            # 直接返回文件下载
+                            return send_file(backup_path, as_attachment=True, download_name=backup_filename)
                         
-                        # 复制数据库文件
-                        shutil.copy2('classcomp.db', backup_path)
-                        
-                        # 直接返回文件下载
-                        return send_file(backup_path, as_attachment=True, download_name=backup_filename)
+                        else:
+                            # PostgreSQL 逻辑备份（导出为 SQL）
+                            backup_filename = f'semester_backup_{backup_time}.sql'
+                            backup_path = os.path.join(EXPORT_FOLDER, backup_filename)
+                            
+                            # 确保exports目录存在
+                            os.makedirs(EXPORT_FOLDER, exist_ok=True)
+                            
+                            try:
+                                # 生成 SQL 备份
+                                conn = get_conn()
+                                cur = conn.cursor()
+                                
+                                with open(backup_path, 'w', encoding='utf-8') as f:
+                                    f.write("-- ClassComp Score 数据备份\n")
+                                    f.write(f"-- 备份时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+                                    
+                                    # 备份用户表
+                                    f.write("-- 用户数据\n")
+                                    cur.execute("SELECT * FROM users ORDER BY id")
+                                    users = cur.fetchall()
+                                    for user in users:
+                                        f.write(f"INSERT INTO users (id, username, password_hash, role, class_name, created_at) VALUES ")
+                                        f.write(f"({user['id']}, '{user['username']}', '{user['password_hash']}', ")
+                                        f.write(f"'{user['role']}', '{user['class_name']}', '{user['created_at']}');\n")
+                                    
+                                    f.write("\n-- 评分数据\n")
+                                    cur.execute("SELECT * FROM scores ORDER BY id")
+                                    scores = cur.fetchall()
+                                    for score in scores:
+                                        f.write(f"INSERT INTO scores (id, user_id, evaluator_name, evaluator_class, ")
+                                        f.write(f"target_grade, target_class, score1, score2, score3, total, note, created_at) VALUES ")
+                                        f.write(f"({score['id']}, {score['user_id']}, '{score['evaluator_name']}', ")
+                                        f.write(f"'{score['evaluator_class']}', '{score['target_grade']}', '{score['target_class']}', ")
+                                        f.write(f"{score['score1']}, {score['score2']}, {score['score3']}, {score['total']}, ")
+                                        f.write(f"'{score['note']}', '{score['created_at']}');\n")
+                                    
+                                    # 备份学期配置
+                                    f.write("\n-- 学期配置\n")
+                                    cur.execute("SELECT * FROM semester_config ORDER BY id")
+                                    semesters = cur.fetchall()
+                                    for semester in semesters:
+                                        f.write(f"INSERT INTO semester_config (id, semester_name, start_date, end_date, ")
+                                        f.write(f"first_period_end_date, is_active, created_at, updated_at) VALUES ")
+                                        f.write(f"({semester['id']}, '{semester['semester_name']}', '{semester['start_date']}', ")
+                                        f.write(f"'{semester['end_date']}', '{semester['first_period_end_date']}', ")
+                                        f.write(f"{semester['is_active']}, '{semester['created_at']}', '{semester['updated_at']}');\n")
+                                
+                                put_conn(conn)
+                                
+                                # 返回 SQL 文件下载
+                                return send_file(backup_path, as_attachment=True, download_name=backup_filename)
+                                
+                            except Exception as e:
+                                return f"PostgreSQL 备份失败：{str(e)}", 500
                 except Exception as e:
                     return f"备份失败：{str(e)}", 500
             
@@ -349,75 +450,69 @@ def admin_semester():
                         return jsonify(success=True, message='新学期配置创建成功')
                 
                 elif action == 'update_classes':
-                    # 更新班级配置
+                    # 更新班级配置 - 使用原子操作防止重复
                     classes = data.get('classes', [])
                     
-                    # 获取当前学期ID，如果没有则创建默认学期
-                    cur.execute('SELECT id FROM semester_config WHERE is_active = 1')
-                    semester = cur.fetchone()
-                    
-                    if not semester:
-                        # 没有活跃学期，先创建一个简单的默认学期配置
-                        current_date = datetime.now()
+                    # 使用事务确保原子性
+                    conn.execute('BEGIN IMMEDIATE')
+                    try:
+                        # 获取当前学期ID，如果没有则创建默认学期
+                        cur.execute('SELECT id FROM semester_config WHERE is_active = 1')
+                        semester = cur.fetchone()
                         
-                        # 简单的默认：第一期结束日期设为今天+14天后的星期日
-                        default_end = current_date + timedelta(days=14)
+                        if not semester:
+                            # 没有活跃学期，先创建一个简单的默认学期配置
+                            current_date = datetime.now()
+                            
+                            # 简单的默认：第一期结束日期设为今天+PERIOD_DAYS后的星期日
+                            default_end = current_date + timedelta(days=PERIOD_CONSTANTS['DAYS_IN_PERIOD'])
+                            
+                            # 找到该日期之后的第一个星期日
+                            days_until_sunday = (PERIOD_CONSTANTS['SUNDAY_WEEKDAY'] - default_end.weekday()) % 7
+                            if days_until_sunday == 0 and default_end.weekday() != PERIOD_CONSTANTS['SUNDAY_WEEKDAY']:
+                                days_until_sunday = 7
+                            first_period_end = default_end + timedelta(days=days_until_sunday)
+                            
+                            semester_name = f'{current_date.year}年学期-默认配置'
+                            start_date = current_date.strftime('%Y-%m-%d')
+                            first_period_end_date = first_period_end.strftime('%Y-%m-%d')
+                            
+                            cur.execute('''
+                                INSERT INTO semester_config (semester_name, start_date, first_period_end_date, is_active)
+                                VALUES (?, ?, ?, 1)
+                            ''', (semester_name, start_date, first_period_end_date))
+                            semester_id = cur.lastrowid
+                            print(f"创建默认学期: {semester_name}, 开始: {start_date}, 第一期结束: {first_period_end_date}")
+                        else:
+                            semester_id = semester['id']
                         
-                        # 找到该日期之后的第一个星期日
-                        days_until_sunday = (6 - default_end.weekday()) % 7
-                        if days_until_sunday == 0 and default_end.weekday() != 6:
-                            days_until_sunday = 7
-                        first_period_end = default_end + timedelta(days=days_until_sunday)
+                        # 先将所有班级设为不活跃
+                        cur.execute('UPDATE semester_classes SET is_active = 0 WHERE semester_id = ?', (semester_id,))
                         
-                        semester_name = f'{current_date.year}年学期-默认配置'
-                        start_date = current_date.strftime('%Y-%m-%d')
-                        first_period_end_date = first_period_end.strftime('%Y-%m-%d')
+                        # 使用UPSERT模式更新班级配置
+                        for class_info in classes:
+                            grade_name = class_info.get('grade_name')
+                            class_name = class_info.get('class_name')
+                            
+                            if not grade_name or not class_name:
+                                continue
+                            
+                            # 使用INSERT OR REPLACE确保原子性和唯一性
+                            cur.execute('''
+                                INSERT OR REPLACE INTO semester_classes 
+                                (semester_id, grade_name, class_name, is_active, created_at, updated_at)
+                                SELECT ?, ?, ?, 1, 
+                                       COALESCE((SELECT created_at FROM semester_classes 
+                                               WHERE semester_id = ? AND class_name = ?), CURRENT_TIMESTAMP),
+                                       CURRENT_TIMESTAMP
+                            ''', (semester_id, grade_name, class_name, semester_id, class_name))
                         
-                        cur.execute('''
-                            INSERT INTO semester_config (semester_name, start_date, first_period_end_date, is_active)
-                            VALUES (?, ?, ?, 1)
-                        ''', (semester_name, start_date, first_period_end_date))
-                        semester_id = cur.lastrowid
                         conn.commit()
-                        print(f"创建默认学期: {semester_name}, 开始: {start_date}, 第一期结束: {first_period_end_date}")
-                    else:
-                        semester_id = semester['id']
-                    
-                    # 先将所有班级设为不活跃
-                    cur.execute('UPDATE semester_classes SET is_active = 0 WHERE semester_id = ?', (semester_id,))
-                    
-                    # 更新或插入新的班级配置
-                    for class_info in classes:
-                        grade_name = class_info.get('grade_name')
-                        class_name = class_info.get('class_name')
+                        return jsonify(success=True, message=f'班级配置更新成功，共{len(classes)}个班级')
                         
-                        if not grade_name or not class_name:
-                            continue
-                        
-                        # 尝试更新现有班级
-                        cur.execute('''
-                            UPDATE semester_classes 
-                            SET is_active = 1, grade_name = ?, updated_at = CURRENT_TIMESTAMP
-                            WHERE semester_id = ? AND class_name = ?
-                        ''', (grade_name, semester_id, class_name))
-                        
-                        # 如果没有更新任何行，则插入新班级
-                        if cur.rowcount == 0:
-                            try:
-                                cur.execute('''
-                                    INSERT INTO semester_classes (semester_id, grade_name, class_name)
-                                    VALUES (?, ?, ?)
-                                ''', (semester_id, grade_name, class_name))
-                            except sqlite3.IntegrityError:
-                                # 班级已存在但被标记为不活跃，重新激活
-                                cur.execute('''
-                                    UPDATE semester_classes 
-                                    SET is_active = 1, grade_name = ?
-                                    WHERE semester_id = ? AND class_name = ?
-                                ''', (grade_name, semester_id, class_name))
-                    
-                    conn.commit()
-                    return jsonify(success=True, message=f'班级配置更新成功，共{len(classes)}个班级')
+                    except Exception as e:
+                        conn.rollback()
+                        return jsonify(success=False, message=f'班级配置更新失败: {str(e)}')
                 
                 elif action == 'reset_database':
                     # 重置数据库（慎用）
@@ -477,6 +572,7 @@ def admin_semester():
 
 @app.route('/submit_scores', methods=['POST'])
 @login_required
+@security_middleware.rate_limit(max_requests=100, window=60)  # 1分钟最多100次提交（开发友好）
 def submit_scores():
     # 教师不能提交评分
     if current_user.is_teacher():
@@ -490,7 +586,13 @@ def submit_scores():
         # 验证必填字段
         required_fields = ["target_grade", "scores"]
         if not all(field in data for field in required_fields):
+            security_middleware.log_security_event("INVALID_INPUT", "缺少必要字段")
             return jsonify(success=False, message="缺少必要字段"), 400
+        
+        # 验证年级输入
+        if not InputValidator.validate_grade(data["target_grade"]):
+            security_middleware.log_security_event("INVALID_GRADE", f"无效年级: {data.get('target_grade')}")
+            return jsonify(success=False, message="无效的年级"), 400
         
         conn = get_conn()
         
@@ -501,20 +603,34 @@ def submit_scores():
             errors = []
             for score_data in data["scores"]:
                 try:
+                    # 验证分数
                     score1 = int(score_data["score1"])
                     score2 = int(score_data["score2"])
                     score3 = int(score_data["score3"])
+                    
+                    if not all(InputValidator.validate_score(s) for s in [score1, score2, score3]):
+                        errors.append("分数必须在0-10之间")
+                        continue
+                    
+                    # 验证班级名称
+                    class_name = score_data.get("className", "")
+                    if not InputValidator.validate_class_name(class_name):
+                        errors.append(f"无效的班级名称: {class_name}")
+                        continue
+                    
+                    # 清理备注
+                    note = InputValidator.sanitize_text(score_data.get("note", ""), max_length=200)
                     
                     score_id, error, overwrite_count = Score.create_score(
                         user_id=current_user.id,
                         evaluator_name=current_user.username,
                         evaluator_class=current_user.class_name,
                         target_grade=data["target_grade"],
-                        target_class=score_data["className"],
+                        target_class=class_name,
                         score1=score1,
                         score2=score2,
                         score3=score3,
-                        note=score_data.get("note", ""),
+                        note=note,
                         conn=conn
                     )
                     
@@ -733,13 +849,15 @@ def api_my_scores():
 @app.route('/export_excel')
 @login_required
 def export_excel():
-    """导出Excel月度报告"""
+    """导出Excel报告 - 支持月度报告和全部数据导出"""
     if not (current_user.is_admin() or current_user.is_teacher()):
         return "权限不足", 403
     
     month = request.args.get("month")
-    if not month:
-        return "请提供 month=YYYY-MM 查询参数", 400
+    all_data = request.args.get("all_data", "false").lower() == "true"  # 是否导出全部数据
+    
+    if not all_data and not month:
+        return "请提供 month=YYYY-MM 查询参数或 all_data=true 参数", 400
     
     try:
         conn = get_conn()
@@ -778,9 +896,24 @@ def export_excel():
                 
                 # 高一高二教师需要包含对应的VCE班级数据
                 if teacher_grade in ['高一', '高二']:
-                    teacher_grade_filter = f" AND (target_grade LIKE '%{teacher_grade}%' OR target_grade LIKE '%{teacher_grade}VCE%')"
+                    teacher_grade_filter = " AND (target_grade LIKE ? OR target_grade LIKE ?)"
+                    teacher_grade_params = [f'%{teacher_grade}%', f'%{teacher_grade}VCE%']
                 else:
-                    teacher_grade_filter = f" AND target_grade LIKE '%{teacher_grade}%'"
+                    teacher_grade_filter = " AND target_grade LIKE ?"
+                    teacher_grade_params = [f'%{teacher_grade}%']
+        
+        # 构建SQL查询 - 根据是否导出全部数据来决定时间条件
+        if all_data:
+            # 导出全部数据 - 不添加时间条件
+            time_condition = ""
+            query_params = []
+        else:
+            # 导出特定月份数据
+            if is_sqlite:
+                time_condition = f"WHERE strftime('%Y-%m', created_at) = {placeholder}"
+            else:
+                time_condition = f"WHERE to_char(created_at, 'YYYY-MM') = {placeholder}"
+            query_params = [month]
         
         if is_sqlite:
             sql = f"""
@@ -797,7 +930,7 @@ def export_excel():
                   note,
                   created_at
                 FROM scores
-                WHERE strftime('%Y-%m', created_at) = {placeholder}{teacher_grade_filter}
+                {time_condition}{teacher_grade_filter}
                 ORDER BY target_grade, target_class, evaluator_class, created_at
             """
         else:
@@ -815,17 +948,28 @@ def export_excel():
                   note,
                   created_at
                 FROM scores
-                WHERE to_char(created_at, 'YYYY-MM') = {placeholder}{teacher_grade_filter}
+                {time_condition}{teacher_grade_filter}
                 ORDER BY created_at
             """
-        cur.execute(sql, (month,))
+        
+        # 构建完整的查询参数
+        if teacher_grade_filter and 'teacher_grade_params' in locals():
+            final_params = query_params + teacher_grade_params
+        else:
+            final_params = query_params if query_params else []
+        
+        if final_params:
+            cur.execute(sql, final_params)
+        else:
+            cur.execute(sql)
         rows = cur.fetchall()
         # 不要在这里关闭连接，后面还需要查询历史记录
         # put_conn(conn)
         
         if not rows:
             put_conn(conn)  # 提前返回时关闭连接
-            return "当月无数据", 200
+            data_type = "全部数据" if all_data else "当月数据"
+            return f"无{data_type}", 200
             
         df = pd.DataFrame(rows, columns=[
             'id', 'evaluator_name', 'evaluator_class', 'target_grade', 
@@ -833,7 +977,8 @@ def export_excel():
             'note', 'created_at'
         ])
         
-        print(f"📊 导出前数据总数: {len(df)}")
+        data_type = "全部数据" if all_data else f"{month}月数据"
+        print(f"📊 导出前{data_type}总数: {len(df)}")
         
         # 增强时间处理逻辑
         def parse_datetime_robust(dt_str):
@@ -852,13 +997,14 @@ def export_excel():
             # 尝试解析
             try:
                 return pd.to_datetime(dt_str)
-            except:
+            except Exception as e:
+                print(f"Error: {e}")
                 try:
                     # 如果失败，尝试只取日期部分
                     date_part = dt_str.split()[0]
                     return pd.to_datetime(date_part)
-                except:
-                    print(f"⚠️ 无法解析时间: {dt_str}")
+                except Exception as parse_error:
+                    print(f"⚠️ 无法解析时间: {dt_str}, 错误: {parse_error}")
                     return None
         
         df["created_at"] = df["created_at"].apply(parse_datetime_robust)
@@ -886,7 +1032,13 @@ def export_excel():
         # 确保所有时间都被正确处理，无论原始格式如何
         df["created_at"] = df["created_at"].dt.tz_localize(None)
         
-        filename = f"评分表_{month.replace('-', '')}.xlsx"
+        # 根据导出类型生成文件名
+        if all_data:
+            from datetime import datetime
+            current_time = datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f"评分表_全部数据_{current_time}.xlsx"
+        else:
+            filename = f"评分表_{month.replace('-', '')}.xlsx"
         filepath = os.path.join(EXPORT_FOLDER, filename)
         
         try:
@@ -991,7 +1143,14 @@ def export_excel():
                     period_df_copy = period_df.copy()
                     period_df_copy['matrix_grade'] = period_df_copy['target_grade'].apply(get_matrix_grade)
                     
-                    for matrix_grade in period_df_copy["matrix_grade"].unique():
+                    # 定义矩阵年级的排序顺序（VCE放在高二后面）
+                    matrix_grade_order = ['中预', '初一', '初二', '高一', '高二', 'VCE']
+                    
+                    # 按正确的年级顺序处理矩阵
+                    available_grades = set(period_df_copy["matrix_grade"].unique())
+                    ordered_grades = [grade for grade in matrix_grade_order if grade in available_grades]
+                    
+                    for matrix_grade in ordered_grades:
                         grade_df = period_df_copy[period_df_copy["matrix_grade"] == matrix_grade]
                         if grade_df.empty:
                             continue
@@ -1111,7 +1270,8 @@ def export_excel():
             # 确保数据库连接被关闭
             try:
                 put_conn(conn)
-            except:
+            except Exception as e:
+                print(f"Error: {e}")
                 pass
         
         return send_file(filepath, as_attachment=True, download_name=filename)
@@ -1119,7 +1279,8 @@ def export_excel():
     except Exception as e:
         try:
             put_conn(conn)
-        except:
+        except Exception as conn_error:
+            print(f"数据库连接关闭错误: {conn_error}")
             pass
         return f"导出失败：{str(e)}", 500
 
@@ -1193,8 +1354,8 @@ def admin():
                 # 全校数据教师可以查看所有数据
                 cur.execute("SELECT COUNT(*) as total FROM scores")
             else:
-                # 普通教师只能查看本年级数据
-                cur.execute(f"SELECT COUNT(*) as total FROM scores WHERE target_grade LIKE '%{teacher_grade}%'")
+                # 普通教师只能查看本年级数据 - 使用参数化查询防止SQL注入
+                cur.execute("SELECT COUNT(*) as total FROM scores WHERE target_grade LIKE ?", (f'%{teacher_grade}%',))
         else:
             cur.execute("SELECT COUNT(*) as total FROM scores")
         total_scores = cur.fetchone()['total']
@@ -1203,7 +1364,7 @@ def admin():
             if current_user.class_name and ('全校' in current_user.class_name or 'ALL' in current_user.class_name.upper()):
                 cur.execute("SELECT AVG(total) as avg FROM scores")
             else:
-                cur.execute(f"SELECT AVG(total) as avg FROM scores WHERE target_grade LIKE '%{teacher_grade}%'")
+                cur.execute("SELECT AVG(total) as avg FROM scores WHERE target_grade LIKE ?", (f'%{teacher_grade}%',))
         else:
             cur.execute("SELECT AVG(total) as avg FROM scores")
         avg_score = cur.fetchone()['avg'] or 0
@@ -1249,6 +1410,141 @@ def admin():
             ''')
         recent_scores = cur.fetchall()
         
+        # 环境信息
+        import os
+        import platform
+        import sys
+        import psutil
+        
+        # 检测数据库类型
+        db_url = os.getenv("DATABASE_URL", "sqlite:///classcomp.db")
+        if db_url.startswith("postgresql"):
+            db_type = "PostgreSQL"
+        elif db_url.startswith("sqlite"):
+            db_type = "SQLite"
+        else:
+            db_type = "其他"
+        
+        # 智能检测运行环境
+        def detect_environment():
+            """智能检测运行环境"""
+            # 1. 检查是否有明确的FLASK_ENV设置
+            flask_env = os.getenv("FLASK_ENV")
+            if flask_env:
+                return flask_env
+            
+            # 2. 检查Flask的debug模式
+            if app.debug:
+                return "development"
+            
+            # 3. 检查是否在开发服务器中运行
+            import __main__
+            main_file = getattr(__main__, '__file__', '')
+            if main_file and ('app.py' in main_file or 'run.py' in main_file):
+                return "development"
+            
+            # 4. 检查是否有WSGI服务器标识
+            server_software = os.getenv('SERVER_SOFTWARE', '')
+            if 'waitress' in server_software.lower() or 'gunicorn' in server_software.lower():
+                return "production"
+            
+            # 5. 检查常见的生产环境标识
+            if os.getenv('RENDER') or os.getenv('HEROKU') or os.getenv('RAILWAY'):
+                return "production"
+            
+            # 6. 默认根据debug模式判断
+            return "development" if app.debug else "production"
+
+        detected_env = detect_environment()
+        
+        # 检测实际运行的服务器类型
+        def detect_actual_server():
+            """检测实际正在运行的服务器类型"""
+            import sys
+            import threading
+            
+            # 1. 检查环境变量中的服务器信息
+            server_software = os.getenv('SERVER_SOFTWARE', '')
+            if 'waitress' in server_software.lower():
+                return "Waitress (WSGI)"
+            elif 'gunicorn' in server_software.lower():
+                return "Gunicorn (WSGI)" 
+            elif 'uwsgi' in server_software.lower():
+                return "uWSGI (WSGI)"
+            
+            # 2. 检查进程模块导入情况
+            try:
+                # 检查是否导入了waitress相关模块
+                if any('waitress' in name for name in sys.modules.keys()):
+                    return "Waitress (WSGI)"
+                if any('gunicorn' in name for name in sys.modules.keys()):
+                    return "Gunicorn (WSGI)"
+                if any('uwsgi' in name for name in sys.modules.keys()):
+                    return "uWSGI (WSGI)"
+            except Exception:
+                pass
+            
+            # 3. 检查线程名称（Waitress会创建特定的线程）
+            try:
+                thread_names = [t.name for t in threading.enumerate()]
+                if any('waitress' in name.lower() for name in thread_names):
+                    return "Waitress (WSGI)"
+                if any('gunicorn' in name.lower() for name in thread_names):
+                    return "Gunicorn (WSGI)"
+            except Exception:
+                pass
+            
+            # 4. 检查是否在生产环境的WSGI服务器中运行
+            if os.getenv('RENDER') or os.getenv('HEROKU') or os.getenv('RAILWAY'):
+                # 生产环境，推断使用的WSGI服务器
+                return "Waitress (WSGI)" if platform.system() == "Windows" else "Gunicorn (WSGI)"
+            
+            # 5. 检查是否通过app.run()直接运行
+            import __main__
+            main_file = getattr(__main__, '__file__', '')
+            if main_file and ('app.py' in main_file or 'run.py' in main_file):
+                # 进一步检查是否真的是Flask开发服务器
+                if app.debug:
+                    return "Flask 开发服务器 (Debug)"
+                else:
+                    return "Flask 开发服务器"
+            
+            # 6. 根据debug模式和其他特征判断
+            if app.debug:
+                return "Flask 开发服务器 (Debug)"
+            
+            # 7. 检查命令行参数
+            try:
+                import sys
+                cmd_line = ' '.join(sys.argv)
+                if 'waitress-serve' in cmd_line or 'waitress' in cmd_line:
+                    return "Waitress (WSGI)"
+                if 'gunicorn' in cmd_line:
+                    return "Gunicorn (WSGI)"
+            except Exception:
+                pass
+            
+            # 默认情况
+            return "未知服务器"
+        
+        actual_server = detect_actual_server()
+        
+        # 运行环境信息
+        environment_info = {
+            'database_type': db_type,
+            'database_url': db_url.split('@')[-1] if '@' in db_url else db_url,  # 隐藏敏感信息
+            'python_version': f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+            'platform': platform.platform(),
+            'cpu_count': psutil.cpu_count(),
+            'memory_total': f"{psutil.virtual_memory().total // (1024**3)} GB",
+            'memory_available': f"{psutil.virtual_memory().available // (1024**3)} GB",
+            'flask_env': detected_env,
+            'flask_env_var': os.getenv("FLASK_ENV", "未设置"),
+            'debug_mode': app.debug,
+            'wsgi_server': actual_server,
+            'server_software': os.getenv('SERVER_SOFTWARE', '直接运行')
+        }
+
         # 年级统计（VCE年级合并，根据教师类型显示不同数据）
         if current_user.is_teacher():
             # 检查是否是全校数据教师
@@ -1419,7 +1715,8 @@ def admin():
                              grade_stats=grade_stats,
                              daily_trend=daily_trend,
                              current_month=current_month,
-                             today=today)
+                             today=today,
+                             environment_info=environment_info)
     finally:
         put_conn(conn)
 
@@ -1508,34 +1805,41 @@ def internal_error(error):
     return render_template('500.html'), 500
 
 if __name__ == "__main__":
-    # 只在数据库不存在或连接失败时才初始化
+    # 简化的启动逻辑：更可靠的数据库初始化
     try:
         conn = get_conn()
         cur = conn.cursor()
-        cur.execute('SELECT 1')
-        put_conn(conn)
-        print("数据库连接正常")
         
-        # 确保学期配置表存在
-        try:
-            from create_semester_config import create_semester_tables
-            create_semester_tables()
-            print("学期配置表检查完成")
-        except Exception as semester_e:
-            print(f"学期配置表初始化失败: {semester_e}")
+        # 检查关键表是否存在
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
+        users_exists = cur.fetchone()
+        
+        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='semester_config'")
+        semester_exists = cur.fetchone()
+        
+        put_conn(conn)
+        
+        # 如果关键表不存在，执行完整初始化
+        if not users_exists or not semester_exists:
+            print("检测到数据库不完整，执行初始化...")
+            print(f"users表存在: {users_exists is not None}")
+            print(f"semester_config表存在: {semester_exists is not None}")
+            
+            from init_db import init_database
+            init_database()
+            print("✅ 数据库初始化完成")
+        else:
+            print("✅ 数据库表完整，连接正常")
             
     except Exception as e:
-        print(f"数据库连接失败，开始初始化: {e}")
+        print(f"数据库检查失败: {e}")
+        print("尝试完整初始化...")
         try:
             from init_db import init_database
             init_database()
-            print("数据库初始化完成")
-            
-            # 初始化学期配置表
-            from create_semester_config import create_semester_tables
-            create_semester_tables()
-            print("学期配置表初始化完成")
+            print("✅ 数据库初始化完成")
         except Exception as init_e:
-            print(f"数据库初始化失败: {init_e}")
+            print(f"❌ 数据库初始化失败: {init_e}")
+            print("请检查数据库配置和权限")
     
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)), debug=True)
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)), debug=False)

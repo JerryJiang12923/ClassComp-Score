@@ -6,15 +6,22 @@
 统一管理评分周期相关的计算逻辑
 """
 
-import sqlite3
 from datetime import datetime, timedelta
+# 周期计算常量
+DAYS_IN_TWO_WEEKS = 14
+PERIOD_BUFFER_DAYS = 13
+SUNDAY_WEEKDAY = 6  # Python中星期日是6
+DEFAULT_TIMEZONE = 'Asia/Shanghai'
+
+
 
 def get_current_semester_config(conn=None):
     """获取当前活跃的学期配置"""
     should_close_conn = conn is None
     if conn is None:
-        conn = sqlite3.connect('classcomp.db')
-        conn.row_factory = sqlite3.Row
+        from db import get_conn, put_conn
+        conn = get_conn()
+        should_close_conn = True
     
     try:
         cur = conn.cursor()
@@ -22,11 +29,15 @@ def get_current_semester_config(conn=None):
         semester = cur.fetchone()
         
         if semester:
-            # 获取班级配置
-            cur.execute('''
+            # 获取班级配置 - 使用数据库兼容的占位符
+            import os
+            db_url = os.getenv("DATABASE_URL", "sqlite:///classcomp.db")
+            placeholder = "?" if db_url.startswith("sqlite") else "%s"
+            
+            cur.execute(f'''
                 SELECT grade_name, class_name
                 FROM semester_classes 
-                WHERE semester_id = ? AND is_active = 1
+                WHERE semester_id = {placeholder} AND is_active = 1
                 ORDER BY 
                     CASE grade_name 
                         WHEN '中预' THEN 1
@@ -49,7 +60,8 @@ def get_current_semester_config(conn=None):
         return None
     finally:
         if should_close_conn:
-            conn.close()
+            from db import put_conn
+            put_conn(conn)
 
 def calculate_period_info(target_date=None, semester_config=None):
     """
@@ -71,15 +83,15 @@ def calculate_period_info(target_date=None, semester_config=None):
             semester = config_data['semester']
             first_period_end = datetime.strptime(semester['first_period_end_date'], '%Y-%m-%d').date()
             # 从第一周期结束日期推算开始日期（往前13天）
-            year_start = first_period_end - timedelta(days=13)
+            year_start = first_period_end - timedelta(days=PERIOD_BUFFER_DAYS)
     else:
         first_period_end = datetime.strptime(semester_config['first_period_end_date'], '%Y-%m-%d').date()
         # 从第一周期结束日期推算开始日期（往前13天）
-        year_start = first_period_end - timedelta(days=13)
+        year_start = first_period_end - timedelta(days=PERIOD_BUFFER_DAYS)
     
     # 找到该日期所在的周日（本周或下周）
     days_until_sunday = (6 - target_date.weekday()) % 7
-    if days_until_sunday == 0 and target_date.weekday() != 6:
+    if days_until_sunday == 0 and target_date.weekday() != SUNDAY_WEEKDAY:
         days_until_sunday = 7
     current_sunday = target_date + timedelta(days=days_until_sunday)
     
@@ -89,11 +101,11 @@ def calculate_period_info(target_date=None, semester_config=None):
     
     # 两周为一个周期
     period_number = week_number // 2
-    period_start = year_start + timedelta(days=(period_number * 14))
-    period_end = year_start + timedelta(days=(period_number * 14 + 13))
+    period_start = year_start + timedelta(days=(period_number * DAYS_IN_TWO_WEEKS))
+    period_end = year_start + timedelta(days=(period_number * DAYS_IN_TWO_WEEKS + PERIOD_BUFFER_DAYS))
     
     # 确保周期结束日是周日
-    while period_end.weekday() != 6:
+    while period_end.weekday() != SUNDAY_WEEKDAY:
         period_end += timedelta(days=1)
     
     return {

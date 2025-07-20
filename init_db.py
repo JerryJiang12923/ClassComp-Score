@@ -243,7 +243,8 @@ def init_database():
             ('t7', '初一老师'),
             ('t8', '初二老师'),
             ('t10', '高一老师'),
-            ('t11', '高二老师')
+            ('t11', '高二老师'),
+            ('ts', '全校数据管理')
         ]
         
         for username, class_name in teachers:
@@ -258,6 +259,12 @@ def init_database():
         
         conn.commit()
         print("数据库初始化完成！")
+        
+        # 创建学期配置表
+        print("创建学期配置表...")
+        from create_semester_config import create_semester_tables
+        create_semester_tables()
+        print("学期配置表创建完成！")
         
     except Exception as e:
         conn.rollback()
