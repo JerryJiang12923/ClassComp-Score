@@ -262,9 +262,15 @@ def init_database():
         
         # 创建学期配置表
         print("创建学期配置表...")
-        from create_semester_config import create_semester_tables
-        create_semester_tables()
-        print("学期配置表创建完成！")
+        try:
+            from create_semester_config import create_semester_tables
+            result = create_semester_tables()
+            print("✅ 学期配置表创建完成！")
+        except Exception as semester_error:
+            print(f"❌ 学期配置表创建失败: {semester_error}")
+            import traceback
+            traceback.print_exc()
+            raise semester_error
         
     except Exception as e:
         conn.rollback()

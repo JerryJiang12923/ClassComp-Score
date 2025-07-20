@@ -68,11 +68,24 @@ def check_database_connection():
         is_sqlite = db_url.startswith('sqlite')
         
         for table_name in basic_tables:
-            try:
-                cur.execute(f'SELECT COUNT(*) FROM {table_name}')
-                count = cur.fetchone()[0]
-                print(f"✅ {table_name} 表存在 ({count} 条记录)")
-            except Exception:
+            if is_sqlite:
+                # SQLite 检查表存在性
+                cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,))
+                table_exists = cur.fetchone()
+            else:
+                # PostgreSQL 检查表存在性
+                cur.execute("SELECT table_name FROM information_schema.tables WHERE table_name=%s", (table_name,))
+                table_exists = cur.fetchone()
+            
+            if table_exists:
+                try:
+                    cur.execute(f'SELECT COUNT(*) FROM {table_name}')
+                    result = cur.fetchone()
+                    count = result['count'] if hasattr(result, 'keys') else result[0]
+                    print(f"✅ {table_name} 表存在 ({count} 条记录)")
+                except Exception as e:
+                    print(f"✅ {table_name} 表存在 (查询记录数失败: {e})")
+            else:
                 missing_tables.append(table_name)
                 print(f"❌ {table_name} 表不存在")
         
@@ -81,11 +94,24 @@ def check_database_connection():
         missing_semester_tables = []
         
         for table_name in semester_tables:
-            try:
-                cur.execute(f'SELECT COUNT(*) FROM {table_name}')
-                count = cur.fetchone()[0]
-                print(f"✅ {table_name} 表存在 ({count} 条记录)")
-            except Exception:
+            if is_sqlite:
+                # SQLite 检查表存在性
+                cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,))
+                table_exists = cur.fetchone()
+            else:
+                # PostgreSQL 检查表存在性
+                cur.execute("SELECT table_name FROM information_schema.tables WHERE table_name=%s", (table_name,))
+                table_exists = cur.fetchone()
+            
+            if table_exists:
+                try:
+                    cur.execute(f'SELECT COUNT(*) FROM {table_name}')
+                    result = cur.fetchone()
+                    count = result['count'] if hasattr(result, 'keys') else result[0]
+                    print(f"✅ {table_name} 表存在 ({count} 条记录)")
+                except Exception as e:
+                    print(f"✅ {table_name} 表存在 (查询记录数失败: {e})")
+            else:
                 missing_semester_tables.append(table_name)
                 print(f"❌ {table_name} 表不存在")
         

@@ -85,12 +85,14 @@ def create_semester_tables():
         print("✅ 学期配置表结构创建完成")
         
         # 检查是否需要创建默认数据
-        cur.execute('SELECT COUNT(*) FROM semester_config WHERE is_active = 1')
-        active_semester_count = cur.fetchone()[0]
+        cur.execute('SELECT COUNT(*) as count FROM semester_config WHERE is_active = 1')
+        result = cur.fetchone()
+        active_semester_count = result['count'] if hasattr(result, 'keys') else result[0]
         
         # 检查班级表是否为空
-        cur.execute('SELECT COUNT(*) FROM semester_classes WHERE is_active = 1')
-        active_class_count = cur.fetchone()[0]
+        cur.execute('SELECT COUNT(*) as count FROM semester_classes WHERE is_active = 1')
+        result = cur.fetchone()
+        active_class_count = result['count'] if hasattr(result, 'keys') else result[0]
         
         if active_semester_count == 0:
             print("📝 创建默认学期配置数据...")
@@ -101,7 +103,7 @@ def create_semester_tables():
             cur.execute('SELECT id FROM semester_config WHERE is_active = 1 ORDER BY created_at LIMIT 1')
             semester_result = cur.fetchone()
             if semester_result:
-                semester_id = semester_result[0]
+                semester_id = semester_result['id'] if hasattr(semester_result, 'keys') else semester_result[0]
                 _create_default_classes_for_semester(conn, cur, is_sqlite, semester_id)
                 conn.commit()
             else:
@@ -112,6 +114,8 @@ def create_semester_tables():
     except Exception as e:
         conn.rollback()
         print(f"❌ 学期配置表创建失败: {e}")
+        import traceback
+        traceback.print_exc()
         raise e
     finally:
         put_conn(conn)
@@ -170,14 +174,13 @@ def _create_default_semester_data(conn, cur, is_sqlite):
             ''', ('2025年第一学期', '2025-07-01', '2025-07-27'))
             semester_id = cur.lastrowid
         else:
-            # PostgreSQL - 使用更安全的方式获取ID
+            # PostgreSQL - 使用 RETURNING 子句获取ID
             cur.execute('''
                 INSERT INTO semester_config (semester_name, start_date, first_period_end_date)
-                VALUES (%s, %s, %s)
+                VALUES (%s, %s, %s) RETURNING id
             ''', ('2025年第一学期', '2025-07-01', '2025-07-27'))
-            # 获取刚插入的记录ID
-            cur.execute('SELECT id FROM semester_config WHERE semester_name = %s AND is_active = 1', ('2025年第一学期',))
-            semester_id = cur.fetchone()[0]
+            result = cur.fetchone()
+            semester_id = result['id'] if hasattr(result, 'keys') else result[0]
         
         # 创建默认班级配置
         _create_default_classes_for_semester(conn, cur, is_sqlite, semester_id)
