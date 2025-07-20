@@ -10,12 +10,14 @@ services:
     envVars:
       - key: DATABASE_URL
         sync: false
+      - key: ADMIN_USERNAME
+        value: admin
+      - key: ADMIN_PASSWORD
+        sync: false
       - key: SECRET_KEY
         generateValue: true
       - key: EXPORT_FOLDER
         value: /tmp/exports
-      - key: PORT
-        value: 5000
       - key: FLASK_ENV
         value: production
       - key: PYTHONUNBUFFERED
