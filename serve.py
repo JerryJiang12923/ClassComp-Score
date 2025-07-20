@@ -28,22 +28,29 @@ def ensure_database_initialized():
             users_exists = cur.fetchone()
             
             cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='semester_config'")
-            semester_exists = cur.fetchone()
+            semester_config_exists = cur.fetchone()
+            
+            cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='semester_classes'")
+            semester_classes_exists = cur.fetchone()
         else:
             # PostgreSQL 检查表存在性
             cur.execute("SELECT table_name FROM information_schema.tables WHERE table_name='users'")
             users_exists = cur.fetchone()
             
             cur.execute("SELECT table_name FROM information_schema.tables WHERE table_name='semester_config'")
-            semester_exists = cur.fetchone()
+            semester_config_exists = cur.fetchone()
+            
+            cur.execute("SELECT table_name FROM information_schema.tables WHERE table_name='semester_classes'")
+            semester_classes_exists = cur.fetchone()
         
         put_conn(conn)
         
         # 如果关键表不存在，执行完整初始化
-        if not users_exists or not semester_exists:
+        if not users_exists or not semester_config_exists or not semester_classes_exists:
             print("🔄 检测到数据库不完整，执行初始化...")
             print(f"  - users表存在: {users_exists is not None}")
-            print(f"  - semester_config表存在: {semester_exists is not None}")
+            print(f"  - semester_config表存在: {semester_config_exists is not None}")
+            print(f"  - semester_classes表存在: {semester_classes_exists is not None}")
             
             from init_db import init_database
             init_database()

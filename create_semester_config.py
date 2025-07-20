@@ -86,13 +86,28 @@ def create_semester_tables():
         
         # 检查是否需要创建默认数据
         cur.execute('SELECT COUNT(*) FROM semester_config WHERE is_active = 1')
-        active_count = cur.fetchone()[0]
+        active_semester_count = cur.fetchone()[0]
         
-        if active_count == 0:
+        # 检查班级表是否为空
+        cur.execute('SELECT COUNT(*) FROM semester_classes WHERE is_active = 1')
+        active_class_count = cur.fetchone()[0]
+        
+        if active_semester_count == 0:
             print("📝 创建默认学期配置数据...")
             _create_default_semester_data(conn, cur, is_sqlite)
+        elif active_class_count == 0:
+            print("📝 学期配置存在但班级数据缺失，补充班级配置...")
+            # 获取第一个活跃学期的ID
+            cur.execute('SELECT id FROM semester_config WHERE is_active = 1 ORDER BY created_at LIMIT 1')
+            semester_result = cur.fetchone()
+            if semester_result:
+                semester_id = semester_result[0]
+                _create_default_classes_for_semester(conn, cur, is_sqlite, semester_id)
+                conn.commit()
+            else:
+                print("⚠️ 未找到活跃学期配置")
         else:
-            print(f"✅ 已存在 {active_count} 个活跃学期配置，跳过数据创建")
+            print(f"✅ 已存在 {active_semester_count} 个活跃学期配置和 {active_class_count} 个班级配置")
         
     except Exception as e:
         conn.rollback()
@@ -102,6 +117,47 @@ def create_semester_tables():
         put_conn(conn)
     
     print("✅ 学期配置表创建完成")
+
+def _create_default_classes_for_semester(conn, cur, is_sqlite, semester_id):
+    """为指定学期创建默认班级配置的内部函数"""
+    try:
+        # 创建默认班级配置
+        default_classes = [
+            ('中预', '中预1班'), ('中预', '中预2班'), ('中预', '中预3班'), ('中预', '中预4班'),
+            ('中预', '中预5班'), ('中预', '中预6班'), ('中预', '中预7班'), ('中预', '中预8班'),
+            ('初一', '初一1班'), ('初一', '初一2班'), ('初一', '初一3班'), ('初一', '初一4班'),
+            ('初一', '初一5班'), ('初一', '初一6班'), ('初一', '初一7班'), ('初一', '初一8班'),
+            ('初二', '初二1班'), ('初二', '初二2班'), ('初二', '初二3班'), ('初二', '初二4班'),
+            ('初二', '初二5班'), ('初二', '初二6班'), ('初二', '初二7班'), ('初二', '初二8班'),
+            ('高一', '高一1班'), ('高一', '高一2班'), ('高一', '高一3班'), ('高一', '高一4班'),
+            ('高一', '高一5班'), ('高一', '高一6班'), ('高一', '高一7班'), ('高一', '高一8班'),
+            ('高二', '高二1班'), ('高二', '高二2班'), ('高二', '高二3班'), ('高二', '高二4班'),
+            ('高二', '高二5班'), ('高二', '高二6班'), ('高二', '高二7班'), ('高二', '高二8班'),
+            ('高一VCE', '高一VCE'),
+            ('高二VCE', '高二VCE'),
+        ]
+        
+        # 批量插入班级配置
+        if is_sqlite:
+            placeholder_sql = 'INSERT OR IGNORE INTO semester_classes (semester_id, grade_name, class_name) VALUES (?, ?, ?)'
+        else:
+            placeholder_sql = 'INSERT INTO semester_classes (semester_id, grade_name, class_name) VALUES (%s, %s, %s) ON CONFLICT (semester_id, class_name) DO NOTHING'
+        
+        inserted_count = 0
+        for grade, class_name in default_classes:
+            try:
+                cur.execute(placeholder_sql, (semester_id, grade, class_name))
+                if cur.rowcount > 0:
+                    inserted_count += 1
+            except Exception as e:
+                # 班级已存在或其他错误，记录但继续
+                print(f"⚠️ 跳过班级 {class_name}: {e}")
+        
+        print(f"✅ 为学期 {semester_id} 创建了 {inserted_count}/{len(default_classes)} 个班级配置")
+        
+    except Exception as e:
+        print(f"❌ 班级配置创建失败: {e}")
+        raise e
 
 def _create_default_semester_data(conn, cur, is_sqlite):
     """创建默认学期配置数据的内部函数"""
@@ -124,39 +180,11 @@ def _create_default_semester_data(conn, cur, is_sqlite):
             semester_id = cur.fetchone()[0]
         
         # 创建默认班级配置
-        default_classes = [
-            ('中预', '中预1班'), ('中预', '中预2班'), ('中预', '中预3班'), ('中预', '中预4班'),
-            ('中预', '中预5班'), ('中预', '中预6班'), ('中预', '中预7班'), ('中预', '中预8班'),
-            ('初一', '初一1班'), ('初一', '初一2班'), ('初一', '初一3班'), ('初一', '初一4班'),
-            ('初一', '初一5班'), ('初一', '初一6班'), ('初一', '初一7班'), ('初一', '初一8班'),
-            ('初二', '初二1班'), ('初二', '初二2班'), ('初二', '初二3班'), ('初二', '初二4班'),
-            ('初二', '初二5班'), ('初二', '初二6班'), ('初二', '初二7班'), ('初二', '初二8班'),
-            ('高一', '高一1班'), ('高一', '高一2班'), ('高一', '高一3班'), ('高一', '高一4班'),
-            ('高一', '高一5班'), ('高一', '高一6班'), ('高一', '高一7班'), ('高一', '高一8班'),
-            ('高二', '高二1班'), ('高二', '高二2班'), ('高二', '高二3班'), ('高二', '高二4班'),
-            ('高二', '高二5班'), ('高二', '高二6班'), ('高二', '高二7班'), ('高二', '高二8班'),
-            ('高一VCE', '高一VCE'),
-            ('高二VCE', '高二VCE'),
-        ]
-        
-        # 批量插入班级配置
-        if is_sqlite:
-            placeholder_sql = 'INSERT INTO semester_classes (semester_id, grade_name, class_name) VALUES (?, ?, ?)'
-        else:
-            placeholder_sql = 'INSERT INTO semester_classes (semester_id, grade_name, class_name) VALUES (%s, %s, %s)'
-        
-        inserted_count = 0
-        for grade, class_name in default_classes:
-            try:
-                cur.execute(placeholder_sql, (semester_id, grade, class_name))
-                inserted_count += 1
-            except Exception as e:
-                # 班级已存在或其他错误，记录但继续
-                print(f"⚠️ 跳过班级 {class_name}: {e}")
+        _create_default_classes_for_semester(conn, cur, is_sqlite, semester_id)
         
         # 提交所有更改
         conn.commit()
-        print(f"✅ 创建了默认学期配置，包含 {inserted_count}/{len(default_classes)} 个班级")
+        print(f"✅ 创建了默认学期配置")
         
     except Exception as e:
         conn.rollback()
