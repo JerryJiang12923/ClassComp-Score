@@ -3,6 +3,7 @@ services:
     name: classcomp-score
     env: python
     plan: free
+    region: singapore
     buildCommand: pip install -r requirements.txt
     startCommand: python pre_start.py && python serve.py
     healthCheckPath: /health
