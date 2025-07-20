@@ -2,6 +2,18 @@ from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
 import pytz
+import os
+from time_utils import get_local_timezone, get_current_time, parse_database_timestamp
+
+# 时区配置 - 已移至 time_utils.py
+# 保持兼容性
+def get_local_timezone():
+    from time_utils import get_local_timezone as _get_local_timezone
+    return _get_local_timezone()
+
+def get_current_time():
+    from time_utils import get_current_time as _get_current_time
+    return _get_current_time()
 
 class User(UserMixin):
     def __init__(self, id, username, role='student', class_name=None):
@@ -102,7 +114,7 @@ class Score:
         # 计算两周评分周期
         from period_utils import get_biweekly_period_end
         
-        now = datetime.now()
+        now = get_current_time()  # 使用时区感知的当前时间
         current_date = now.date()
         period_end = get_biweekly_period_end(current_date)
         
@@ -127,12 +139,15 @@ class Score:
         # 检查是否有同一周期的评分需要归档
         for existing_score in existing_scores:
             existing_created = existing_score['created_at']
-            if isinstance(existing_created, str):
-                existing_created = datetime.fromisoformat(existing_created.replace('Z', '+00:00'))
-            if hasattr(existing_created, 'date'):
-                existing_date = existing_created.date()
-            else:
-                existing_date = existing_created
+            
+            # 使用统一的时间解析函数
+            try:
+                parsed_time = parse_database_timestamp(existing_created)
+                existing_date = parsed_time.date()
+            except Exception as e:
+                print(f"时间格式解析错误: {existing_created}, 错误: {e}")
+                # 如果解析失败，跳过这条记录
+                continue
             
             existing_period_end = get_biweekly_period_end(existing_date)
             

@@ -153,8 +153,20 @@ def init_database():
         
         # 检查管理员是否已存在
         cur.execute(f"SELECT id FROM users WHERE username = {placeholder}", (admin_username,))
-        if not cur.fetchone():
-            password_hash = generate_password_hash(admin_password)
+        existing_admin = cur.fetchone()
+        
+        password_hash = generate_password_hash(admin_password)
+        
+        if existing_admin:
+            # 更新现有管理员密码
+            cur.execute(f"""
+                UPDATE users 
+                SET password_hash = {placeholder}
+                WHERE username = {placeholder}
+            """, (password_hash, admin_username))
+            print(f"管理员账户密码已更新: {admin_username}")
+        else:
+            # 创建新的管理员账户
             cur.execute(f"""
                 INSERT INTO users (username, password_hash, role, class_name)
                 VALUES ({placeholder}, {placeholder}, 'admin', '管理员')

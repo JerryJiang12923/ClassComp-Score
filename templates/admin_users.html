@@ -221,7 +221,7 @@
                                         <span class="badge bg-primary">学生</span>
                                     {% endif %}
                                 </td>
-                                <td>{{ user.created_at[:16] if user.created_at else '未知' }}</td>
+                                <td>{{ user.created_at | format_datetime if user.created_at else '未知' }}</td>
                                 <td>
                                     <span class="badge bg-info">{{ user.score_count }}</span>
                                 </td>

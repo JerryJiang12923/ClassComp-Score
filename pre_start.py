@@ -127,7 +127,16 @@ def check_database_connection():
             except Exception as init_error:
                 print(f"❌ 数据库初始化失败: {init_error}")
                 return False
-        
+        else:
+            # 即使表存在，也要确保管理员密码是最新的
+            print("🔧 检查管理员账户密码...")
+            try:
+                from reset_admin_password import reset_admin_password
+                reset_admin_password()
+            except Exception as admin_error:
+                print(f"⚠️ 管理员密码检查失败: {admin_error}")
+                # 不返回 False，因为这不是致命错误
+
         return True
         
     except Exception as e:

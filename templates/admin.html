@@ -152,7 +152,7 @@
                                     {% if recent_scores %}
                                         {% for score in recent_scores %}
                                         <tr>
-                                            <td>{{ score.created_at[:16] if score.created_at else '未知' }}</td>
+                                            <td>{{ score.created_at | format_datetime if score.created_at else '未知' }}</td>
                                             <td>{{ score.username or score.evaluator_name }}</td>
                                             <td>{{ score.evaluator_class_name or score.evaluator_class }}</td>
                                             <td>{{ score.target_grade }}</td>
@@ -167,7 +167,7 @@
                                         {% endfor %}
                                     {% else %}
                                         <tr>
-                                            <td colspan="8" class="text-center">暂无数据</td>
+                                            <td colspan="7" class="text-center">暂无数据</td>
                                         </tr>
                                     {% endif %}
                                 </tbody>
@@ -388,111 +388,318 @@
     
     <script>
         $(document).ready(function() {
-            // 初始化数据表格
-            $('#recentScoresTable').DataTable({
-                order: [[0, 'desc']],
-                pageLength: 15,
-                searching: true,
-                lengthChange: false,
-                language: {
-                    url: '//cdn.datatables.net/plug-ins/1.11.5/i18n/zh.json'
+            console.log('页面加载完成，开始初始化...');
+            
+            // 延迟初始化，确保DOM完全准备好
+            setTimeout(function() {
+                try {
+                    initDataTable();
+                } catch (e) {
+                    console.error('DataTable初始化失败:', e);
                 }
-            });
-
-            // 初始化图表
-            initCharts();
+                
+                try {
+                    initCharts();
+                } catch (e) {
+                    console.error('图表初始化失败:', e);
+                }
+            }, 200);
         });
+        
+        function initDataTable() {
+            console.log('开始初始化DataTable...');
+            
+            // 检查表格是否存在
+            const tableElement = document.getElementById('recentScoresTable');
+            if (!tableElement) {
+                console.error('未找到recentScoresTable表格');
+                return;
+            }
+            
+            // 检查表格结构
+            const thead = tableElement.querySelector('thead');
+            const tbody = tableElement.querySelector('tbody');
+            
+            if (!thead || !tbody) {
+                console.error('表格结构不完整');
+                return;
+            }
+            
+            // 检查表头列数
+            const headerCells = thead.querySelectorAll('th');
+            console.log(`表头列数: ${headerCells.length}`);
+            
+            // 检查表体行数和列数
+            const bodyRows = tbody.querySelectorAll('tr');
+            console.log(`表体行数: ${bodyRows.length}`);
+            
+            if (bodyRows.length > 0) {
+                let canInitDataTable = true;
+                bodyRows.forEach((row, index) => {
+                    const cells = row.querySelectorAll('td');
+                    
+                    // 检查是否是colspan行（如"暂无数据"行）
+                    let totalColspan = 0;
+                    cells.forEach(cell => {
+                        const colspan = parseInt(cell.getAttribute('colspan') || '1');
+                        totalColspan += colspan;
+                    });
+                    
+                    console.log(`第${index + 1}行: ${cells.length}个单元格，总colspan: ${totalColspan}`);
+                    
+                    // 只有当总colspan不等于表头列数时才不能初始化DataTable
+                    if (totalColspan !== headerCells.length) {
+                        console.warn(`第${index + 1}行列数不匹配: 期望${headerCells.length}列，实际${totalColspan}列，跳过DataTables初始化`);
+                        canInitDataTable = false;
+                    }
+                });
+                
+                if (!canInitDataTable) {
+                    console.info('表格包含colspan行，跳过DataTables初始化但保持表格显示');
+                    return; // 不初始化DataTable，但不移除表格内容
+                }
+            }
+            
+            // 如果检查通过，初始化DataTable
+            try {
+                $('#recentScoresTable').DataTable({
+                    order: [[0, 'desc']],
+                    pageLength: 15,
+                    searching: true,
+                    lengthChange: false,
+                    destroy: true, // 如果已存在则销毁重建
+                    language: {
+                        "sProcessing": "处理中...",
+                        "sLengthMenu": "显示 _MENU_ 项结果",
+                        "sZeroRecords": "没有匹配结果",
+                        "sInfo": "显示第 _START_ 至 _END_ 项结果，共 _TOTAL_ 项",
+                        "sInfoEmpty": "显示第 0 至 0 项结果，共 0 项",
+                        "sInfoFiltered": "(由 _MAX_ 项结果过滤)",
+                        "sInfoPostFix": "",
+                        "sSearch": "搜索:",
+                        "sUrl": "",
+                        "sEmptyTable": "表中数据为空",
+                        "sLoadingRecords": "载入中...",
+                        "sInfoThousands": ",",
+                        "oPaginate": {
+                            "sFirst": "首页",
+                            "sPrevious": "上页",
+                            "sNext": "下页",
+                            "sLast": "末页"
+                        },
+                        "oAria": {
+                            "sSortAscending": ": 以升序排列此列",
+                            "sSortDescending": ": 以降序排列此列"
+                        }
+                    }
+                });
+                console.log('DataTable初始化成功');
+            } catch (e) {
+                console.error('DataTable初始化异常:', e);
+                // 尝试移除可能导致问题的行
+                try {
+                    // 先收集需要移除的行，避免在遍历时直接修改DOM
+                    const rowsToRemove = [];
+                    bodyRows.forEach((row, index) => {
+                        const cells = row.querySelectorAll('td');
+                        let totalColspan = 0;
+                        cells.forEach(cell => {
+                            const colspan = parseInt(cell.getAttribute('colspan') || '1');
+                            totalColspan += colspan;
+                        });
+                        
+                        if (totalColspan !== headerCells.length) {
+                            console.log(`标记移除问题行${index + 1}`);
+                            rowsToRemove.push(row);
+                        }
+                    });
+                    
+                    // 安全地移除问题行
+                    rowsToRemove.forEach(row => {
+                        if (row && row.parentNode) {
+                            row.parentNode.removeChild(row);
+                        }
+                    });
+                    
+                    // 重新尝试初始化
+                    $('#recentScoresTable').DataTable({
+                        order: [[0, 'desc']],
+                        pageLength: 15,
+                        searching: true,
+                        lengthChange: false,
+                        destroy: true,
+                        language: {
+                            "sEmptyTable": "表中数据为空",
+                            "sInfo": "显示第 _START_ 至 _END_ 项结果，共 _TOTAL_ 项",
+                            "sInfoEmpty": "显示第 0 至 0 项结果，共 0 项",
+                            "sSearch": "搜索:",
+                            "oPaginate": {
+                                "sFirst": "首页",
+                                "sPrevious": "上页",
+                                "sNext": "下页",
+                                "sLast": "末页"
+                            }
+                        }
+                    });
+                    console.log('DataTable修复后初始化成功');
+                } catch (e2) {
+                    console.error('DataTable修复失败:', e2);
+                }
+            }
+        }
 
         function initCharts() {
+            console.log('开始初始化图表...');
+            
+            // 检查必要的元素是否存在
+            const chartDataElement = document.getElementById('chart-data');
+            const gradeChartElement = document.getElementById('gradeChart');
+            const dailyChartElement = document.getElementById('dailyChart');
+            
+            if (!chartDataElement) {
+                console.error('未找到chart-data元素');
+                return;
+            }
+            
+            if (!gradeChartElement) {
+                console.error('未找到gradeChart元素');
+                return;
+            }
+            
+            if (!dailyChartElement) {
+                console.error('未找到dailyChart元素');
+                return;
+            }
+            
             // 获取后端数据
-            const chartData = JSON.parse(document.getElementById('chart-data').textContent);
+            let chartData;
+            try {
+                chartData = JSON.parse(chartDataElement.textContent);
+                console.log('获取到的图表数据:', chartData);
+            } catch (e) {
+                console.error('解析图表数据失败:', e);
+                return;
+            }
             
             // 年级评分分布图
-            const gradeCtx = document.getElementById('gradeChart').getContext('2d');
+            const gradeCtx = gradeChartElement.getContext('2d');
             
             // 通过DOM元素传递用户类型信息
             const userType = document.body.dataset.userType;
             const isRegularTeacher = userType === 'regular_teacher';
+            
+            console.log('用户类型:', userType, '是否普通教师:', isRegularTeacher);
             
             if (isRegularTeacher) {
                 // 普通教师：显示班级本周期完成情况
                 const completedClasses = chartData.gradeStats.filter(item => item.count === 1);
                 const pendingClasses = chartData.gradeStats.filter(item => item.count === 0);
                 
-                new Chart(gradeCtx, {
-                    type: 'doughnut',
-                    data: {
-                        labels: ['已完成班级', '待完成班级'],
-                        datasets: [{
-                            data: [completedClasses.length, pendingClasses.length],
-                            backgroundColor: ['#28a745', '#fd7e14']
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: { position: 'bottom' },
-                            tooltip: {
-                                callbacks: {
-                                    label: function(context) {
-                                        const label = context.label;
-                                        const value = context.parsed;
-                                        const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                                        const percentage = ((value / total) * 100).toFixed(1);
-                                        return `${label}: ${value}个班级 (${percentage}%)`;
+                console.log('普通教师数据:', {
+                    总班级: chartData.gradeStats.length,
+                    已完成: completedClasses.length,
+                    待完成: pendingClasses.length
+                });
+                
+                // 检查是否有数据
+                if (chartData.gradeStats.length === 0) {
+                    console.warn('普通教师没有班级数据');
+                    gradeCtx.canvas.parentElement.innerHTML = '<div class="text-center text-muted p-4"><i class="fas fa-info-circle"></i><br>暂无班级数据</div>';
+                } else if (completedClasses.length === 0 && pendingClasses.length === 0) {
+                    console.warn('普通教师数据异常');
+                    gradeCtx.canvas.parentElement.innerHTML = '<div class="text-center text-muted p-4"><i class="fas fa-exclamation-triangle"></i><br>数据加载异常</div>';
+                } else {
+                    // 正常显示饼图
+                    console.log('创建普通教师饼图');
+                    new Chart(gradeCtx, {
+                        type: 'doughnut',
+                        data: {
+                            labels: ['已完成班级', '待完成班级'],
+                            datasets: [{
+                                data: [completedClasses.length, pendingClasses.length],
+                                backgroundColor: ['#28a745', '#fd7e14']
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: { position: 'bottom' },
+                                tooltip: {
+                                    callbacks: {
+                                        label: function(context) {
+                                            const label = context.label;
+                                            const value = context.parsed;
+                                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                            const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0';
+                                            return `${label}: ${value}个班级 (${percentage}%)`;
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
-                });
+                    });
+                }
             } else {
                 // 管理员和全校数据教师：显示年级分布
-                new Chart(gradeCtx, {
-                    type: 'doughnut',
+                if (chartData.gradeStats.length === 0) {
+                    // 没有数据时显示提示
+                    gradeCtx.canvas.parentElement.innerHTML = '<div class="text-center text-muted p-4"><i class="fas fa-info-circle"></i><br>暂无评分数据</div>';
+                } else {
+                    new Chart(gradeCtx, {
+                        type: 'doughnut',
+                        data: {
+                            labels: chartData.gradeStats.map(item => item.display_grade || item.target_grade),
+                            datasets: [{
+                                data: chartData.gradeStats.map(item => item.count),
+                                backgroundColor: [
+                                    '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0',
+                                    '#9966FF', '#FF9F40', '#FF6384', '#C9CBCF'
+                                ]
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: { position: 'bottom' }
+                            }
+                        }
+                    });
+                }
+            }
+
+            // 每日评分趋势图
+            console.log('创建每日趋势图, 数据:', chartData.dailyTrend);
+            const dailyCtx = dailyChartElement.getContext('2d');
+            
+            if (chartData.dailyTrend.length === 0) {
+                console.warn('没有每日趋势数据');
+                dailyCtx.canvas.parentElement.innerHTML = '<div class="text-center text-muted p-4"><i class="fas fa-info-circle"></i><br>暂无趋势数据</div>';
+            } else {
+                new Chart(dailyCtx, {
+                    type: 'line',
                     data: {
-                        labels: chartData.gradeStats.map(item => item.display_grade || item.target_grade),
+                        labels: chartData.dailyTrend.map(item => item.date),
                         datasets: [{
-                            data: chartData.gradeStats.map(item => item.count),
-                            backgroundColor: [
-                                '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0',
-                                '#9966FF', '#FF9F40', '#FF6384', '#C9CBCF'
-                            ]
+                            label: '每日评分数量',
+                            data: chartData.dailyTrend.map(item => item.count),
+                            borderColor: '#667eea',
+                            backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                            tension: 0.4
                         }]
                     },
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
-                        plugins: {
-                            legend: { position: 'bottom' }
+                        scales: {
+                            y: { beginAtZero: true }
                         }
                     }
                 });
             }
-
-            // 每日评分趋势图
-            const dailyCtx = document.getElementById('dailyChart').getContext('2d');
-            new Chart(dailyCtx, {
-                type: 'line',
-                data: {
-                    labels: chartData.dailyTrend.map(item => item.date),
-                    datasets: [{
-                        label: '每日评分数量',
-                        data: chartData.dailyTrend.map(item => item.count),
-                        borderColor: '#667eea',
-                        backgroundColor: 'rgba(102, 126, 234, 0.1)',
-                        tension: 0.4
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        y: { beginAtZero: true }
-                    }
-                }
-            });
+            
+            console.log('图表初始化完成');
         }
 
         function refreshData() {

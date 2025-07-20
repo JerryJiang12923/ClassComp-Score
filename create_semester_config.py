@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 
 """
-创建学期设置表
-用于存储学期配置信息：班级列表、周期设置等
+创建学期设置表                    created_at TIMESTAMP WITH TIME ZONE DEFAULT (NOW() AT TIME ZONE 'Asia/Shanghai'),
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT (NOW() AT TIME ZONE 'Asia/Shanghai'),用于存储学期配置信息：班级列表、周期设置等
 """
 
 import os
@@ -73,8 +73,8 @@ def create_semester_tables():
                     grade_name VARCHAR(255) NOT NULL,
                     class_name VARCHAR(255) NOT NULL,
                     is_active INTEGER DEFAULT 1,
-                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT (NOW() AT TIME ZONE 'Asia/Shanghai'),
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT (NOW() AT TIME ZONE 'Asia/Shanghai'),
                     FOREIGN KEY (semester_id) REFERENCES semester_config (id),
                     UNIQUE(semester_id, class_name)
                 )

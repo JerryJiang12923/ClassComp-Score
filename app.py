@@ -18,6 +18,10 @@ from security_constants import ALLOWED_GRADES, PERIOD_CONSTANTS, USER_ROLES, SCO
 from input_validator import InputValidator, SQLSafetyHelper
 from security_middleware import security_middleware
 
+# 导入时间处理工具
+from time_utils import get_current_time, get_local_timezone, parse_database_timestamp, format_datetime_for_display
+
+# 时区配置
 def validate_grade_input(grade):
     """验证年级输入，防止SQL注入"""
     return InputValidator.validate_grade(grade)
@@ -57,6 +61,12 @@ def load_user(user_id):
 EXPORT_FOLDER = os.getenv("EXPORT_FOLDER", "exports")
 os.makedirs(EXPORT_FOLDER, exist_ok=True)
 
+# 添加模板过滤器
+@app.template_filter('format_datetime')
+def format_datetime_filter(timestamp, format_string='%Y-%m-%d %H:%M'):
+    """模板过滤器：格式化时间戳"""
+    return format_datetime_for_display(timestamp, format_string)
+
 @app.route('/health')
 def health_check():
     """健康检查端点，用于 Render 等平台检测服务状态"""
@@ -66,7 +76,7 @@ def health_check():
         cur = conn.cursor()
         cur.execute('SELECT 1')
         put_conn(conn)
-        return jsonify({"status": "healthy", "timestamp": datetime.now().isoformat()}), 200
+        return jsonify({"status": "healthy", "timestamp": get_current_time().isoformat()}), 200
     except Exception as e:
         return jsonify({"status": "unhealthy", "error": str(e)}), 503
 
@@ -567,6 +577,9 @@ def admin_semester():
                         return jsonify(success=False, message=f'重置失败: {str(e)}')
         
         # GET请求：获取当前学期配置
+        db_url = os.getenv("DATABASE_URL", "sqlite:///classcomp.db")
+        placeholder = "?" if db_url.startswith("sqlite") else "%s"
+        
         cur.execute('''
             SELECT * FROM semester_config WHERE is_active = 1
         ''')
@@ -574,10 +587,13 @@ def admin_semester():
         
         if semester:
             # 获取班级配置，按正确的年级顺序排列
-            cur.execute('''
+            db_url = os.getenv("DATABASE_URL", "sqlite:///classcomp.db")
+            placeholder = "?" if db_url.startswith("sqlite") else "%s"
+            
+            cur.execute(f'''
                 SELECT grade_name, class_name
                 FROM semester_classes 
-                WHERE semester_id = ? AND is_active = 1
+                WHERE semester_id = {placeholder} AND is_active = 1
                 ORDER BY 
                     CASE grade_name 
                         WHEN '中预' THEN 1 
@@ -948,6 +964,17 @@ def export_excel():
                 time_condition = f"WHERE to_char(created_at, 'YYYY-MM') = {placeholder}"
             query_params = [month]
         
+        # 处理教师权限过滤器：确保SQL语法正确
+        if teacher_grade_filter:
+            if time_condition:
+                # 已有WHERE条件，直接拼接AND
+                final_where_condition = time_condition + teacher_grade_filter
+            else:
+                # 没有WHERE条件，将AND替换为WHERE
+                final_where_condition = "WHERE" + teacher_grade_filter[4:]  # 去掉" AND"，替换为"WHERE"
+        else:
+            final_where_condition = time_condition
+        
         if is_sqlite:
             sql = f"""
                 SELECT
@@ -963,7 +990,7 @@ def export_excel():
                   note,
                   created_at
                 FROM scores
-                {time_condition}{teacher_grade_filter}
+                {final_where_condition}
                 ORDER BY target_grade, target_class, evaluator_class, created_at
             """
         else:
@@ -981,7 +1008,7 @@ def export_excel():
                   note,
                   created_at
                 FROM scores
-                {time_condition}{teacher_grade_filter}
+                {final_where_condition}
                 ORDER BY created_at
             """
         
@@ -1097,13 +1124,18 @@ def export_excel():
                 df['period_end_date'] = df['date_only'].apply(lambda x: get_biweekly_period(x)[1])
                 df['period_month'] = df['period_end_date'].apply(lambda x: x.strftime('%Y-%m'))
                 
-                # 只保留归属于指定月份的周期
-                month_df = df[df['period_month'] == month].copy()
-                
-                if month_df.empty:
-                    # 如果按周期归属没有数据，回退到原始的月份筛选
+                if all_data:
+                    # 导出全部数据时，不按月份过滤
                     month_df = df.copy()
-                    print(f"⚠️ 按周期归属无数据，使用原始月份筛选")
+                    print(f"🌐 导出全部数据，共{len(df)}条记录")
+                else:
+                    # 导出特定月份数据时，只保留归属于指定月份的周期
+                    month_df = df[df['period_month'] == month].copy()
+                    
+                    if month_df.empty:
+                        # 如果按周期归属没有数据，回退到原始的月份筛选
+                        month_df = df.copy()
+                        print(f"⚠️ 按周期归属无数据，使用原始月份筛选")
                 
                 print(f"📅 找到{len(month_df['period_number'].unique())}个评分周期的数据")
                 
@@ -1214,6 +1246,32 @@ def export_excel():
                 
                 # 获取历史记录
                 history_cur = conn.cursor()
+                
+                # 处理历史记录的WHERE条件 - 使用与主查询相同的逻辑
+                if all_data:
+                    # 导出全部数据时，只有教师权限过滤器
+                    if teacher_grade_filter:
+                        # 去掉" AND"，替换为"WHERE"
+                        history_where_condition = "WHERE" + teacher_grade_filter[4:]
+                        history_params = teacher_grade_params if 'teacher_grade_params' in locals() else []
+                    else:
+                        history_where_condition = ""
+                        history_params = []
+                else:
+                    # 导出特定月份数据
+                    if is_sqlite:
+                        base_condition = f"WHERE strftime('%Y-%m', h.original_created_at) = {placeholder}"
+                    else:
+                        base_condition = f"WHERE to_char(h.original_created_at, 'YYYY-MM') = {placeholder}"
+                    
+                    if teacher_grade_filter:
+                        history_where_condition = base_condition + teacher_grade_filter
+                        history_params = [month] + (teacher_grade_params if 'teacher_grade_params' in locals() else [])
+                    else:
+                        history_where_condition = base_condition
+                        history_params = [month]
+                
+                # 构建历史记录SQL
                 if is_sqlite:
                     history_sql = f"""
                         SELECT 
@@ -1221,7 +1279,7 @@ def export_excel():
                             h.target_grade, h.target_class, h.score1, h.score2, h.score3, h.total,
                             h.note, h.original_created_at as created_at, h.overwritten_at, h.overwritten_by_score_id
                         FROM scores_history h
-                        WHERE strftime('%Y-%m', h.original_created_at) = {placeholder}{teacher_grade_filter}
+                        {history_where_condition}
                         ORDER BY h.original_created_at, h.overwritten_at
                     """
                 else:
@@ -1231,11 +1289,16 @@ def export_excel():
                             h.target_grade, h.target_class, h.score1, h.score2, h.score3, h.total,
                             h.note, h.original_created_at as created_at, h.overwritten_at, h.overwritten_by_score_id
                         FROM scores_history h
-                        WHERE to_char(h.original_created_at, 'YYYY-MM') = {placeholder}{teacher_grade_filter}
+                        {history_where_condition}
                         ORDER BY h.original_created_at, h.overwritten_at
                     """
                 
-                history_cur.execute(history_sql, (month,))
+                # 执行历史记录查询
+                if history_params:
+                    history_cur.execute(history_sql, history_params)
+                else:
+                    history_cur.execute(history_sql)
+                
                 history_rows = history_cur.fetchall()
                 
                 if history_rows:
@@ -1250,28 +1313,16 @@ def export_excel():
                     history_df["created_at"] = history_df["created_at"].apply(parse_datetime_robust)
                     history_df = history_df.dropna(subset=['created_at'])
                     
-                    # 计算历史记录的周期（和当前记录使用相同逻辑）
-                    history_df['date_only'] = history_df['created_at'].dt.date
-                    history_df['period_number'] = history_df['date_only'].apply(lambda x: get_biweekly_period(x)[0])
-                    history_df['period_end_date'] = history_df['date_only'].apply(lambda x: get_biweekly_period(x)[1])
-                    history_df['period_month'] = history_df['period_end_date'].apply(lambda x: x.strftime('%Y-%m'))
-                    
-                    # 按周期归属过滤历史记录（和当前记录使用相同逻辑）
-                    history_month_df = history_df[history_df['period_month'] == month].copy()
-                    
-                    if history_month_df.empty and not month_df.empty:
-                        # 如果按周期归属没有历史记录，但有当前记录，回退到原始月份筛选
-                        history_df['created_month'] = history_df['created_at'].dt.strftime('%Y-%m')
-                        history_month_df = history_df[history_df['created_month'] == month].copy()
-                        if not history_month_df.empty:
-                            # 重新计算周期信息
-                            history_month_df['date_only'] = history_month_df['created_at'].dt.date
-                            history_month_df['period_number'] = history_month_df['date_only'].apply(lambda x: get_biweekly_period(x)[0])
-                            history_month_df['period_end_date'] = history_month_df['date_only'].apply(lambda x: get_biweekly_period(x)[1])
-                            history_month_df['period_month'] = history_month_df['period_end_date'].apply(lambda x: x.strftime('%Y-%m'))
-                            print(f"⚠️ 历史记录按原始月份筛选: {len(history_month_df)}条")
-                    
-                    if not history_month_df.empty:
+                    if all_data:
+                        # 导出全部数据时，不按月份过滤，直接处理所有历史记录
+                        print(f"🌐 导出全部数据，包含所有{len(history_df)}条历史记录")
+                        history_month_df = history_df.copy()
+                        
+                        # 计算历史记录的周期（用于显示）
+                        history_month_df['date_only'] = history_month_df['created_at'].dt.date
+                        history_month_df['period_number'] = history_month_df['date_only'].apply(lambda x: get_biweekly_period(x)[0])
+                        history_month_df['period_end_date'] = history_month_df['date_only'].apply(lambda x: get_biweekly_period(x)[1])
+                        
                         history_month_df['记录类型'] = '历史记录(已覆盖)'
                         history_month_df['评分周期'] = history_month_df['period_number'].apply(lambda x: f"第{x + 1}周期")
                         
@@ -1280,8 +1331,39 @@ def export_excel():
                         # 合并当前和历史记录
                         all_records = pd.concat([current_detail_df, history_month_df], ignore_index=True)
                     else:
-                        print("📝 无匹配的历史记录")
-                        all_records = current_detail_df
+                        # 按月份导出时，需要按周期过滤历史记录
+                        # 计算历史记录的周期（和当前记录使用相同逻辑）
+                        history_df['date_only'] = history_df['created_at'].dt.date
+                        history_df['period_number'] = history_df['date_only'].apply(lambda x: get_biweekly_period(x)[0])
+                        history_df['period_end_date'] = history_df['date_only'].apply(lambda x: get_biweekly_period(x)[1])
+                        history_df['period_month'] = history_df['period_end_date'].apply(lambda x: x.strftime('%Y-%m'))
+                        
+                        # 按周期归属过滤历史记录（和当前记录使用相同逻辑）
+                        history_month_df = history_df[history_df['period_month'] == month].copy()
+                        
+                        if history_month_df.empty and not month_df.empty:
+                            # 如果按周期归属没有历史记录，但有当前记录，回退到原始月份筛选
+                            history_df['created_month'] = history_df['created_at'].dt.strftime('%Y-%m')
+                            history_month_df = history_df[history_df['created_month'] == month].copy()
+                            if not history_month_df.empty:
+                                # 重新计算周期信息
+                                history_month_df['date_only'] = history_month_df['created_at'].dt.date
+                                history_month_df['period_number'] = history_month_df['date_only'].apply(lambda x: get_biweekly_period(x)[0])
+                                history_month_df['period_end_date'] = history_month_df['date_only'].apply(lambda x: get_biweekly_period(x)[1])
+                                history_month_df['period_month'] = history_month_df['period_end_date'].apply(lambda x: x.strftime('%Y-%m'))
+                                print(f"⚠️ 历史记录按原始月份筛选: {len(history_month_df)}条")
+                        
+                        if not history_month_df.empty:
+                            history_month_df['记录类型'] = '历史记录(已覆盖)'
+                            history_month_df['评分周期'] = history_month_df['period_number'].apply(lambda x: f"第{x + 1}周期")
+                            
+                            print(f"✅ 最终历史记录: {len(history_month_df)}条")
+                            
+                            # 合并当前和历史记录
+                            all_records = pd.concat([current_detail_df, history_month_df], ignore_index=True)
+                        else:
+                            print("📝 无匹配的历史记录")
+                            all_records = current_detail_df
                 else:
                     print("📝 无历史记录")
                     all_records = current_detail_df
@@ -1407,7 +1489,10 @@ def admin():
             if current_user.class_name and ('全校' in current_user.class_name or 'ALL' in current_user.class_name.upper()):
                 cur.execute(f"SELECT COUNT(*) as today FROM scores WHERE {today_condition}")
             else:
-                cur.execute(f"SELECT COUNT(*) as today FROM scores WHERE {today_condition} AND target_grade LIKE '%{teacher_grade}%'")
+                if teacher_grade:
+                    cur.execute(f"SELECT COUNT(*) as today FROM scores WHERE {today_condition} AND target_grade LIKE ?", (f'%{teacher_grade}%',))
+                else:
+                    cur.execute(f"SELECT COUNT(*) as today FROM scores WHERE {today_condition}")
         else:
             cur.execute(f"SELECT COUNT(*) as today FROM scores WHERE {today_condition}")
         today_scores = cur.fetchone()['today']
@@ -1425,14 +1510,23 @@ def admin():
                 ''')
             else:
                 # 普通教师只看本年级
-                cur.execute(f'''
-                    SELECT s.*, u.username, u.class_name as evaluator_class_name
-                    FROM scores s 
-                    JOIN users u ON s.user_id = u.id 
-                    WHERE s.target_grade LIKE '%{teacher_grade}%'
-                    ORDER BY s.created_at DESC 
-                    LIMIT 100
-                ''')
+                if teacher_grade:
+                    cur.execute('''
+                        SELECT s.*, u.username, u.class_name as evaluator_class_name
+                        FROM scores s 
+                        JOIN users u ON s.user_id = u.id 
+                        WHERE s.target_grade LIKE ?
+                        ORDER BY s.created_at DESC 
+                        LIMIT 100
+                    ''', (f'%{teacher_grade}%',))
+                else:
+                    cur.execute('''
+                        SELECT s.*, u.username, u.class_name as evaluator_class_name
+                        FROM scores s 
+                        JOIN users u ON s.user_id = u.id 
+                        ORDER BY s.created_at DESC 
+                        LIMIT 100
+                    ''')
         else:
             cur.execute('''
                 SELECT s.*, u.username, u.class_name as evaluator_class_name
@@ -1654,7 +1748,7 @@ def admin():
                             SELECT 
                                 sc.class_name as display_grade,
                                 CASE WHEN COUNT(s.id) > 0 THEN 1 ELSE 0 END as count, 
-                                CASE WHEN COUNT(s.id) > 0 THEN 8.5 ELSE 0 END as avg_score
+                                COUNT(s.id) as score_count
                             FROM semester_classes sc
                             LEFT JOIN users u ON sc.class_name = u.class_name AND u.role = 'student'
                             LEFT JOIN scores s ON u.id = s.user_id 
@@ -1754,22 +1848,40 @@ def admin():
                         ''')
                 else:
                     # 普通教师只看本年级趋势
-                    if is_sqlite:
-                        cur.execute(f'''
-                            SELECT {date_format} as date, COUNT(*) as count
-                            FROM scores 
-                            WHERE created_at >= datetime('now', '-7 days') AND target_grade LIKE '%{teacher_grade}%'
-                            GROUP BY {date_format}
-                            ORDER BY date
-                        ''')
+                    if teacher_grade:
+                        if is_sqlite:
+                            cur.execute(f'''
+                                SELECT {date_format} as date, COUNT(*) as count
+                                FROM scores 
+                                WHERE created_at >= datetime('now', '-7 days') AND target_grade LIKE ?
+                                GROUP BY {date_format}
+                                ORDER BY date
+                            ''', (f'%{teacher_grade}%',))
+                        else:
+                            cur.execute(f'''
+                                SELECT {date_format} as date, COUNT(*) as count
+                                FROM scores 
+                                WHERE created_at >= CURRENT_DATE - INTERVAL '7 days' AND target_grade LIKE ?
+                                GROUP BY {date_format}
+                                ORDER BY date
+                            ''', (f'%{teacher_grade}%',))
                     else:
-                        cur.execute(f'''
-                            SELECT {date_format} as date, COUNT(*) as count
-                            FROM scores 
-                            WHERE created_at >= CURRENT_DATE - INTERVAL '7 days' AND target_grade LIKE '%{teacher_grade}%'
-                            GROUP BY {date_format}
-                            ORDER BY date
-                        ''')
+                        if is_sqlite:
+                            cur.execute(f'''
+                                SELECT {date_format} as date, COUNT(*) as count
+                                FROM scores 
+                                WHERE created_at >= datetime('now', '-7 days')
+                                GROUP BY {date_format}
+                                ORDER BY date
+                            ''')
+                        else:
+                            cur.execute(f'''
+                                SELECT {date_format} as date, COUNT(*) as count
+                                FROM scores 
+                                WHERE created_at >= CURRENT_DATE - INTERVAL '7 days'
+                                GROUP BY {date_format}
+                                ORDER BY date
+                            ''')
             else:
                 if is_sqlite:
                     cur.execute(f'''

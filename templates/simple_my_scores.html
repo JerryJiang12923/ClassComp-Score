@@ -65,7 +65,7 @@
                         <tbody>
                             {% for score in scores %}
                             <tr>
-                                <td>{{ score.created_at[:16] if score.created_at else '未知时间' }}</td>
+                                <td>{{ score.created_at | format_datetime }}</td>
                                 <td>{{ score.target_grade }}</td>
                                 <td>{{ score.target_class }}</td>
                                 <td>{{ score.score1 }}/3</td>

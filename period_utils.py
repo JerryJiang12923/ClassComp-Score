@@ -7,11 +7,28 @@
 """
 
 from datetime import datetime, timedelta
+import pytz
+import os
+
 # 周期计算常量
 DAYS_IN_TWO_WEEKS = 14
 PERIOD_BUFFER_DAYS = 13
 SUNDAY_WEEKDAY = 6  # Python中星期日是6
 DEFAULT_TIMEZONE = 'Asia/Shanghai'
+
+def get_local_timezone():
+    """获取本地时区，优先使用环境变量"""
+    tz_name = os.getenv('TZ', DEFAULT_TIMEZONE)
+    try:
+        return pytz.timezone(tz_name)
+    except:
+        return pytz.timezone(DEFAULT_TIMEZONE)  # 回退到默认时区
+
+def get_current_time():
+    """获取当前本地时间（时区感知）"""
+    local_tz = get_local_timezone()
+    utc_now = datetime.now(pytz.UTC)
+    return utc_now.astimezone(local_tz)
 
 
 
@@ -69,7 +86,9 @@ def calculate_period_info(target_date=None, semester_config=None):
     使用第一周期结束日期作为基准进行计算
     """
     if target_date is None:
-        target_date = datetime.now().date()
+        # 使用时区感知的当前时间
+        current_time = get_current_time()
+        target_date = current_time.date()
     elif isinstance(target_date, str):
         # 如果传入的是字符串，转换为date对象
         target_date = datetime.strptime(target_date, '%Y-%m-%d').date()
