@@ -12,14 +12,10 @@ services:
       - key: SECRET_KEY
         generateValue: true
       - key: EXPORT_FOLDER
-        value: /app/exports
+        value: /tmp/exports
       - key: PORT
         value: 5000
       - key: FLASK_ENV
         value: production
       - key: PYTHONUNBUFFERED
         value: 1
-    disk:
-      name: classcomp-exports
-      mountPath: /app/exports
-      sizeGB: 1
