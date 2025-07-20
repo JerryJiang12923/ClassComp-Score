@@ -224,7 +224,7 @@
             "gradeStats": [
                 {% for grade in grade_stats %}
                 {
-                    "target_grade": "{{ grade.target_grade }}",
+                    "target_grade": "{{ grade.display_grade }}",
                     "count": {{ grade.count }}
                 }{% if not loop.last %},{% endif %}
                 {% endfor %}

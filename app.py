@@ -41,7 +41,7 @@ def index():
     
     # 根据用户班级自动确定应该评价的年级
     def get_target_grade(user_class):
-        """根据评分链条确定目标年级：中预→初一→初二→中预, 高一↔高二, VCE↔VCE"""
+        """根据评分链条确定目标年级：中预→初一→初二→中预, 高一↔高二, 高一VCE↔高二VCE"""
         if not user_class:
             return None
             
@@ -54,12 +54,14 @@ def index():
             return '初二'  # 初一评初二
         elif user_class.startswith('初二'):
             return '中预'  # 初二评中预
+        elif user_class.startswith('高一') and 'VCE' in user_class:
+            return '高二VCE'  # 高一VCE评高二VCE
+        elif user_class.startswith('高二') and 'VCE' in user_class:
+            return '高一VCE'  # 高二VCE评高一VCE
         elif user_class.startswith('高一'):
             return '高二'  # 高一评高二
         elif user_class.startswith('高二'):
             return '高一'  # 高二评高一
-        elif 'VCE' in user_class:
-            return 'VCE'   # VCE评VCE
         else:
             return None
     
@@ -185,7 +187,15 @@ def admin_users():
                 FROM scores
                 GROUP BY user_id
             ) sc ON u.id = sc.user_id
-            ORDER BY u.created_at DESC
+            ORDER BY 
+                CASE u.role 
+                    WHEN 'admin' THEN 1 
+                    WHEN 'student' THEN 2 
+                    WHEN 'teacher' THEN 3 
+                    ELSE 4 
+                END,
+                u.class_name,
+                u.username
         ''')
         users = cur.fetchall()
         return render_template('admin_users.html', users=users, user=current_user)
@@ -506,18 +516,37 @@ def export_excel():
                     period_avg = period_df.groupby(['target_grade', 'target_class'])['total'].mean().reset_index()
                     period_avg = period_avg.round(2)
                     
-                    # 按年级分组，年级之间插入空行
+                    # 创建显示年级：将VCE年级合并
+                    def get_display_grade(grade):
+                        """将VCE年级合并为VCE显示"""
+                        if 'VCE' in grade:
+                            return 'VCE'
+                        return grade
+                    
+                    period_avg['display_grade'] = period_avg['target_grade'].apply(get_display_grade)
+                    
+                    # 定义年级排序顺序
+                    grade_order = ['中预', '初一', '初二', '高一', '高二', 'VCE']
+                    
+                    # 按正确的年级顺序排序
+                    display_grades = sorted(
+                        period_avg['display_grade'].unique(),
+                        key=lambda x: grade_order.index(x) if x in grade_order else 999
+                    )
+                    
+                    # 按显示年级分组，年级之间插入空行
                     summary_data = []
-                    for grade in sorted(period_avg['target_grade'].unique()):
-                        grade_data = period_avg[period_avg['target_grade'] == grade][['target_class', 'total']].copy()
+                    
+                    for i, display_grade in enumerate(display_grades):
+                        grade_data = period_avg[period_avg['display_grade'] == display_grade][['target_class', 'total']].copy()
                         grade_data.columns = ['被查班级', '平均分']
                         grade_data = grade_data.sort_values('被查班级')
                         
                         # 添加年级数据
                         summary_data.append(grade_data)
                         
-                        # 如果不是最后一个年级，添加空行
-                        if grade != sorted(period_avg['target_grade'].unique())[-1]:
+                        # 如果不是最后一个年级，添加空行分隔
+                        if i < len(display_grades) - 1:
                             empty_row = pd.DataFrame([['', '']], columns=['被查班级', '平均分'])
                             summary_data.append(empty_row)
                     
@@ -536,8 +565,19 @@ def export_excel():
                 for period in sorted(month_df['period_number'].unique()):
                     period_df = month_df[month_df['period_number'] == period]
                     
-                    for grade in period_df["target_grade"].unique():
-                        grade_df = period_df[period_df["target_grade"] == grade]
+                    # 创建年级分组：将VCE年级合并
+                    def get_matrix_grade(grade):
+                        """将VCE年级合并为一个矩阵"""
+                        if 'VCE' in grade:
+                            return 'VCE'
+                        return grade
+                    
+                    # 添加矩阵年级列
+                    period_df_copy = period_df.copy()
+                    period_df_copy['matrix_grade'] = period_df_copy['target_grade'].apply(get_matrix_grade)
+                    
+                    for matrix_grade in period_df_copy["matrix_grade"].unique():
+                        grade_df = period_df_copy[period_df_copy["matrix_grade"] == matrix_grade]
                         if grade_df.empty:
                             continue
                             
@@ -551,11 +591,11 @@ def export_excel():
                             ).round(2)
                             
                             if not pivot.empty:
-                                sheet_name = f"第{period + 1}周期{grade}年级矩阵"[:31]
+                                sheet_name = f"第{period + 1}周期{matrix_grade}年级矩阵"[:31]
                                 pivot.to_excel(writer, sheet_name=sheet_name)
                                 print(f"✅ 创建{sheet_name}: {len(pivot.index)}个被评班级, {len(pivot.columns)}个评分班级")
                         except Exception as e:
-                            print(f"⚠️ 跳过第{period + 1}周期{grade}年级矩阵创建: {str(e)}")
+                            print(f"⚠️ 跳过第{period + 1}周期{matrix_grade}年级矩阵创建: {str(e)}")
                 
                 # 3. 创建包含历史记录的详细明细表
                 print("📝 正在生成详细明细表（包含历史记录）...")
@@ -718,12 +758,26 @@ def admin():
         ''')
         recent_scores = cur.fetchall()
         
-        # 年级统计
+        # 年级统计（VCE年级合并）
         cur.execute('''
-            SELECT target_grade, COUNT(*) as count, AVG(total) as avg_score
+            SELECT 
+                CASE 
+                    WHEN target_grade LIKE '%VCE%' THEN 'VCE'
+                    ELSE target_grade 
+                END as display_grade,
+                COUNT(*) as count, 
+                AVG(total) as avg_score
             FROM scores 
-            GROUP BY target_grade 
-            ORDER BY target_grade
+            GROUP BY 
+                CASE 
+                    WHEN target_grade LIKE '%VCE%' THEN 'VCE'
+                    ELSE target_grade 
+                END
+            ORDER BY 
+                CASE 
+                    WHEN target_grade LIKE '%VCE%' THEN 'VCE'
+                    ELSE target_grade 
+                END
         ''')
         grade_stats = cur.fetchall()
         
@@ -814,15 +868,22 @@ def api_stats():
         """)
         month_stats = cur.fetchone()
         
-        # 各年级平均分
+        # 各年级平均分（VCE年级合并）
         cur.execute(f"""
             SELECT 
-                target_grade,
+                CASE 
+                    WHEN target_grade LIKE '%VCE%' THEN 'VCE'
+                    ELSE target_grade 
+                END as display_grade,
                 AVG(total) as avg_score,
                 COUNT(*) as count
             FROM scores 
             WHERE {today_condition}
-            GROUP BY target_grade
+            GROUP BY 
+                CASE 
+                    WHEN target_grade LIKE '%VCE%' THEN 'VCE'
+                    ELSE target_grade 
+                END
             ORDER BY avg_score DESC
         """)
         grade_stats = cur.fetchall()

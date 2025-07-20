@@ -144,40 +144,117 @@ def init_database():
         for index_sql in indexes:
             cur.execute(index_sql)
         
-        # 创建管理员账户（如果环境变量中提供了）
+        # 创建默认用户账户
+        placeholder = "?" if is_sqlite else "%s"
+        
+        # 管理员账户
         admin_username = os.getenv('ADMIN_USERNAME', 'admin')
-        admin_email = os.getenv('ADMIN_EMAIL', 'admin@school.com')
         admin_password = os.getenv('ADMIN_PASSWORD', 'admin123')
         
-        if admin_username and admin_email and admin_password:
-            # 检查管理员是否已存在
-            placeholder = "?" if is_sqlite else "%s"
-            cur.execute(f"SELECT id FROM users WHERE username = {placeholder}", (admin_username,))
-            if not cur.fetchone():
-                password_hash = generate_password_hash(admin_password)
-                cur.execute(f"""
-                    INSERT INTO users (username, password_hash, role, class_name)
-                    VALUES ({placeholder}, {placeholder}, 'admin', '管理员')
-                """, (admin_username, password_hash))
-                print(f"管理员账户创建成功: {admin_username}")
+        # 检查管理员是否已存在
+        cur.execute(f"SELECT id FROM users WHERE username = {placeholder}", (admin_username,))
+        if not cur.fetchone():
+            password_hash = generate_password_hash(admin_password)
+            cur.execute(f"""
+                INSERT INTO users (username, password_hash, role, class_name)
+                VALUES ({placeholder}, {placeholder}, 'admin', '管理员')
+            """, (admin_username, password_hash))
+            print(f"管理员账户创建成功: {admin_username}")
         
-        # 创建一些测试学生账户
-        test_students = [
-            ('student1', 'student123', '中预1班'),
-            ('student2', 'student123', '初一2班'),
-            ('student3', 'student123', '初二3班'),
-        ]
-        
-        placeholder = "?" if is_sqlite else "%s"
-        for username, password, class_name in test_students:
+        # 创建学生账户 - 中预年级 (6年级)
+        g6_classes = ['g6c1', 'g6c2', 'g6c3', 'g6c4', 'g6c5', 'g6c6', 'g6c7', 'g6c8']
+        for username in g6_classes:
             cur.execute(f"SELECT id FROM users WHERE username = {placeholder}", (username,))
             if not cur.fetchone():
-                password_hash = generate_password_hash(password)
+                class_num = username[-1]  # 取最后一个字符作为班级号
+                class_name = f"中预{class_num}班"
+                password_hash = generate_password_hash('123456')  # 默认密码
                 cur.execute(f"""
                     INSERT INTO users (username, password_hash, role, class_name)
                     VALUES ({placeholder}, {placeholder}, 'student', {placeholder})
                 """, (username, password_hash, class_name))
-                print(f"测试学生账户创建成功: {username}")
+                print(f"学生账户创建成功: {username} ({class_name})")
+        
+        # 创建学生账户 - 初一年级 (7年级)
+        g7_classes = ['g7c1', 'g7c2', 'g7c3', 'g7c4', 'g7c5', 'g7c6', 'g7c7', 'g7c8']
+        for username in g7_classes:
+            cur.execute(f"SELECT id FROM users WHERE username = {placeholder}", (username,))
+            if not cur.fetchone():
+                class_num = username[-1]
+                class_name = f"初一{class_num}班"
+                password_hash = generate_password_hash('123456')
+                cur.execute(f"""
+                    INSERT INTO users (username, password_hash, role, class_name)
+                    VALUES ({placeholder}, {placeholder}, 'student', {placeholder})
+                """, (username, password_hash, class_name))
+                print(f"学生账户创建成功: {username} ({class_name})")
+        
+        # 创建学生账户 - 初二年级 (8年级)
+        g8_classes = ['g8c1', 'g8c2', 'g8c3', 'g8c4', 'g8c5', 'g8c6', 'g8c7', 'g8c8']
+        for username in g8_classes:
+            cur.execute(f"SELECT id FROM users WHERE username = {placeholder}", (username,))
+            if not cur.fetchone():
+                class_num = username[-1]
+                class_name = f"初二{class_num}班"
+                password_hash = generate_password_hash('123456')
+                cur.execute(f"""
+                    INSERT INTO users (username, password_hash, role, class_name)
+                    VALUES ({placeholder}, {placeholder}, 'student', {placeholder})
+                """, (username, password_hash, class_name))
+                print(f"学生账户创建成功: {username} ({class_name})")
+        
+        # 创建学生账户 - 高一年级 (10年级)
+        g10_classes = ['g10c1', 'g10c2', 'g10c3', 'g10c4', 'g10c5', 'g10c6', 'g10c7', 'g10c8', 'g10cv']
+        for username in g10_classes:
+            cur.execute(f"SELECT id FROM users WHERE username = {placeholder}", (username,))
+            if not cur.fetchone():
+                if username == 'g10cv':
+                    class_name = "高一VCE"
+                else:
+                    class_num = username[-1]
+                    class_name = f"高一{class_num}班"
+                password_hash = generate_password_hash('123456')
+                cur.execute(f"""
+                    INSERT INTO users (username, password_hash, role, class_name)
+                    VALUES ({placeholder}, {placeholder}, 'student', {placeholder})
+                """, (username, password_hash, class_name))
+                print(f"学生账户创建成功: {username} ({class_name})")
+        
+        # 创建学生账户 - 高二年级 (11年级)
+        g11_classes = ['g11c1', 'g11c2', 'g11c3', 'g11c4', 'g11c5', 'g11c6', 'g11c7', 'g11c8', 'g11cv']
+        for username in g11_classes:
+            cur.execute(f"SELECT id FROM users WHERE username = {placeholder}", (username,))
+            if not cur.fetchone():
+                if username == 'g11cv':
+                    class_name = "高二VCE"
+                else:
+                    class_num = username[-1]
+                    class_name = f"高二{class_num}班"
+                password_hash = generate_password_hash('123456')
+                cur.execute(f"""
+                    INSERT INTO users (username, password_hash, role, class_name)
+                    VALUES ({placeholder}, {placeholder}, 'student', {placeholder})
+                """, (username, password_hash, class_name))
+                print(f"学生账户创建成功: {username} ({class_name})")
+        
+        # 创建教师账户
+        teachers = [
+            ('t6', '中预老师'),
+            ('t7', '初一老师'),
+            ('t8', '初二老师'),
+            ('t10', '高一老师'),
+            ('t11', '高二老师')
+        ]
+        
+        for username, class_name in teachers:
+            cur.execute(f"SELECT id FROM users WHERE username = {placeholder}", (username,))
+            if not cur.fetchone():
+                password_hash = generate_password_hash('123456')
+                cur.execute(f"""
+                    INSERT INTO users (username, password_hash, role, class_name)
+                    VALUES ({placeholder}, {placeholder}, 'teacher', {placeholder})
+                """, (username, password_hash, class_name))
+                print(f"教师账户创建成功: {username} ({class_name})")
         
         conn.commit()
         print("数据库初始化完成！")
