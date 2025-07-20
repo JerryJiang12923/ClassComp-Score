@@ -17,7 +17,7 @@ class LoginForm(FlaskForm):
 class RegistrationForm(FlaskForm):
     username = StringField('用户名', validators=[
         DataRequired(message='请输入用户名'),
-        Length(min=3, max=20, message='用户名长度必须在3-20个字符之间')
+        Length(min=2, max=20, message='用户名长度必须在2-20个字符之间')
     ])
     email = StringField('邮箱', validators=[
         DataRequired(message='请输入邮箱'),

@@ -1,61 +1,45 @@
 @echo off
-echo ?? ClassComp Score Íê±¸ÏµÍ³Æô¶¯Æ÷
+chcp 65001 >nul
+echo ğŸš€ ClassComp Score ç­çº§è¯„åˆ†ç³»ç»Ÿå¯åŠ¨å™¨
 echo ====================================
 echo.
 
-REM ¼ì²éPython»·¾³
+REM æ£€æµ‹Pythonç¯å¢ƒ
 python --version >nul 2>&1
 if %errorlevel% neq 0 (
-    echo ? PythonÎ´ÕÒµ½£¡
-    echo ÇëÈ·±£PythonÒÑ°²×°²¢Ìí¼Óµ½ÏµÍ³PATH
-    echo ÏÂÔØµØÖ·£ºhttps://www.python.org/downloads/
+    echo âŒ Pythonæœªæ‰¾åˆ°ï¼
+    echo è¯·ç¡®ä¿Pythonå·²å®‰è£…å¹¶æ·»åŠ åˆ°ç³»ç»ŸPATH
+    echo ä¸‹è½½åœ°å€ï¼šhttps://www.python.org/downloads/
     pause
     exit /b 1
 )
 
-echo ? Python»·¾³Õı³£
+echo âœ… Pythonç¯å¢ƒæ­£å¸¸
 echo.
 
-REM ¼ì²éÒÀÀµ
-python -c "import flask; print('? FlaskÒÑ°²×°')" >nul 2>&1
-if %errorlevel% neq 0 (
-    echo ?? ÕıÔÚ°²×°ÒÀÀµ...
-    pip install -r requirements.txt
-    if %errorlevel% neq 0 (
-        echo ? ÒÀÀµ°²×°Ê§°Ü£¬ÇëÊÖ¶¯ÔËĞĞ: pip install -r requirements.txt
-        pause
-        exit /b 1
-    )
+REM å®‰è£…ä¾èµ–
+echo ğŸ“¦ æ£€æŸ¥å¹¶å®‰è£…ä¾èµ–...
+pip install -r requirements.txt >nul 2>&1
+
+echo âœ… ä¾èµ–æ£€æŸ¥å®Œæˆ
+echo.
+
+REM æ£€æŸ¥æ•°æ®åº“
+python -c "import os; from dotenv import load_dotenv; from db import get_conn, put_conn; load_dotenv(); conn = get_conn(); cur = conn.cursor(); cur.execute('SELECT 1'); print('âœ… æ•°æ®åº“è¿æ¥æ­£å¸¸'); put_conn(conn)" 2>nul || (
+    echo ğŸ”„ é¦–æ¬¡è¿è¡Œï¼Œæ­£åœ¨åˆå§‹åŒ–æ•°æ®åº“...
+    python init_db.py
+    echo âœ… æ•°æ®åº“åˆå§‹åŒ–å®Œæˆ
 )
 
-echo ? ÒÀÀµ¼ì²éÍê³É
 echo.
-
-REM ¼ì²éÊı¾İ¿â
-python -c "
-import os
-from dotenv import load_dotenv
-from db import get_conn, put_conn
-try:
-    load_dotenv()
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute('SELECT 1')
-    print('? Êı¾İ¿âÁ¬½ÓÕı³£')
-    put_conn(conn)
-except Exception as e:
-    print('??  Ê×´ÎÔËĞĞ£¬ÕıÔÚ³õÊ¼»¯Êı¾İ¿â...')
-    exec(open('init_db.py').read())
-    print('? Êı¾İ¿â³õÊ¼»¯Íê³É')
-" >nul 2>&1
-
+echo ğŸ¯ å¯åŠ¨åº”ç”¨...
+echo è®¿é—®åœ°å€: http://localhost:5000
 echo.
-echo ?? Æô¶¯Ó¦ÓÃ...
-echo ·ÃÎÊµØÖ·: http://localhost:5000
-echo.
-echo Ä¬ÈÏÕË»§:
-echo - ¹ÜÀíÔ±: admin / admin123
-echo - ²âÊÔÑ§Éú: student1 / student123
+echo é»˜è®¤è´¦æˆ·:
+echo - ç®¡ç†å‘˜: admin / admin123
+echo - æµ‹è¯•å­¦ç”Ÿ: student1 / student123
+echo - å…¨æ ¡æ•°æ®æ•™å¸ˆ: ts / teacher123
+echo - å¹´çº§æ•™å¸ˆ: t6, t7, t8, t10, t11 / password123
 echo.
 
 python app.py

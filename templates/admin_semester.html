@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>学期设置 - 信息委员评分系统</title>
+    <link href="{{ url_for('static', filename='bootstrap.min.css') }}" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .setting-card {
+            transition: all 0.3s ease;
+            border-left: 4px solid #007bff;
+        }
+        .setting-card:hover {
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            transform: translateY(-2px);
+        }
+        .danger-zone {
+            border-left-color: #dc3545;
+            background-color: #fff5f5;
+        }
+        .class-chip {
+            display: inline-block;
+            background: #e9ecef;
+            border: 1px solid #dee2e6;
+            border-radius: 20px;
+            padding: 5px 15px;
+            margin: 3px;
+            font-size: 0.9em;
+            position: relative;
+        }
+        .grade-title {
+            display: block;
+            width: 100%;
+            margin-top: 1rem !important;
+            margin-bottom: 0.5rem !important;
+            font-weight: bold;
+        }
+        .grade-title:first-child {
+            margin-top: 0 !important;
+        }
+        .grade-section {
+            margin-bottom: 1rem;
+        }
+        .class-chip .remove-btn {
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            font-size: 12px;
+            margin-left: 8px;
+            cursor: pointer;
+        }
+        .add-class-form {
+            background: #f8f9fa;
+            border: 2px dashed #dee2e6;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="{{ url_for('index') }}">
+                <i class="fas fa-clipboard-check me-2"></i>
+                信息委员评分系统
+            </a>
+            <div class="navbar-nav ms-auto">
+                <span class="navbar-text me-3">管理员: {{ user.username }}</span>
+                <a class="nav-link" href="{{ url_for('admin') }}">
+                    <i class="fas fa-chart-line me-1"></i>数据面板
+                </a>
+                <a class="nav-link" href="{{ url_for('admin_users') }}">
+                    <i class="fas fa-users me-1"></i>用户管理
+                </a>
+                <a class="nav-link" href="{{ url_for('logout') }}">
+                    <i class="fas fa-sign-out-alt me-1"></i>退出
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container py-4">
+        <h2 class="mb-4">
+            <i class="fas fa-cog me-2"></i>学期设置
+        </h2>
+
+        <!-- 学期基本信息 -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card setting-card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-calendar-alt me-2"></i>学期基本信息
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="semesterConfigForm">
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <label class="form-label">学期名称</label>
+                                    <input type="text" class="form-control" id="semesterName" 
+                                           value="{{ semester.semester_name if semester else '2025年第一学期' }}" required>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">学期开始日期</label>
+                                    <input type="date" class="form-control" id="startDate" 
+                                           value="{{ semester.start_date if semester else '2025-07-01' }}" required>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">第一周期结束日期</label>
+                                    <input type="date" class="form-control" id="firstPeriodEnd" 
+                                           value="{{ semester.first_period_end_date if semester else '2025-07-27' }}" required>
+                                    <div class="form-text">设置第一个评分周期的结束日期（通常是周日）</div>
+                                </div>
+                            </div>
+                            <div class="mt-3">
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="fas fa-save me-1"></i>保存学期配置
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 班级设置 -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card setting-card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="fas fa-users me-2"></i>班级设置
+                        </h5>
+                        <button class="btn btn-success btn-sm" onclick="showAddClassForm()">
+                            <i class="fas fa-plus me-1"></i>添加班级
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <!-- 添加班级表单 -->
+                        <div id="addClassForm" class="add-class-form" style="display: none;">
+                            <h6>添加新班级</h6>
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <select class="form-select" id="newGrade">
+                                        <option value="中预">中预</option>
+                                        <option value="初一">初一</option>
+                                        <option value="初二">初二</option>
+                                        <option value="高一">高一</option>
+                                        <option value="高二">高二</option>
+                                        <option value="高一VCE">高一VCE</option>
+                                        <option value="高二VCE">高二VCE</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <input type="text" class="form-control" id="newClassName" placeholder="班级名称" 
+                                           onkeypress="if(event.key==='Enter') addNewClass()">
+                                </div>
+                                <div class="col-md-4">
+                                    <button class="btn btn-primary me-2" onclick="addNewClass()">
+                                        <i class="fas fa-plus"></i> 添加
+                                    </button>
+                                    <button class="btn btn-secondary" onclick="hideAddClassForm()">
+                                        <i class="fas fa-times"></i> 取消
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 当前班级列表 -->
+                        <div id="classList">
+                            {% if classes %}
+                                {% set grade_order = ['中预', '初一', '初二', '高一', '高二', '高一VCE', '高二VCE'] %}
+                                {% for grade_name in grade_order %}
+                                    {% set grade_classes = classes|selectattr('grade_name', 'equalto', grade_name)|list %}
+                                    {% if grade_classes %}
+                                        <div class="grade-section">
+                                            <h6 class="grade-title text-primary">{{ grade_name }}</h6>
+                                            <div class="grade-classes">
+                                                {% for class in grade_classes %}
+                                                    <span class="class-chip" data-grade="{{ class.grade_name }}" data-class="{{ class.class_name }}">
+                                                        {{ class.class_name }}
+                                                        <button class="remove-btn" onclick="removeClass('{{ class.class_name }}')">×</button>
+                                                    </span>
+                                                {% endfor %}
+                                            </div>
+                                        </div>
+                                    {% endif %}
+                                {% endfor %}
+                            {% else %}
+                                <p class="text-muted">暂无班级配置</p>
+                            {% endif %}
+                        </div>
+
+                        <div class="mt-3">
+                            <button class="btn btn-primary" onclick="saveClassConfig()">
+                                <i class="fas fa-save me-1"></i>保存班级配置
+                            </button>
+                            <button class="btn btn-info" onclick="loadDefaultClasses()">
+                                <i class="fas fa-download me-1"></i>载入默认班级
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 数据管理 -->
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <div class="card setting-card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-database me-2"></i>数据备份
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <p class="card-text">导出当前学期的完整数据作为备份，包括所有评分记录和用户信息。</p>
+                        <button class="btn btn-success" onclick="exportBackup()">
+                            <i class="fas fa-download me-1"></i>导出数据备份
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6 mb-3">
+                <div class="card setting-card danger-zone">
+                    <div class="card-header">
+                        <h5 class="mb-0 text-danger">
+                            <i class="fas fa-exclamation-triangle me-2"></i>危险操作
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <p class="card-text text-danger">
+                            <strong>警告：</strong>重置数据库将删除所有评分记录，此操作不可恢复！
+                        </p>
+                        <button class="btn btn-danger" onclick="showResetConfirm()">
+                            <i class="fas fa-trash me-1"></i>重置数据库
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 重置确认模态框 -->
+    <div class="modal fade" id="resetModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title">确认重置数据库</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-danger"><strong>此操作将：</strong></p>
+                    <ul class="text-danger">
+                        <li>删除所有评分记录</li>
+                        <li>清空评分历史</li>
+                        <li>重置学期配置</li>
+                    </ul>
+                    <p>请在下方输入确认码 <code>RESET_CONFIRM</code> 以继续：</p>
+                    <input type="text" class="form-control" id="confirmCode" placeholder="请输入确认码">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-danger" onclick="confirmReset()">确认重置</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        // 保存学期配置
+        $('#semesterConfigForm').on('submit', function(e) {
+            e.preventDefault();
+            
+            const data = {
+                action: 'update_config',
+                semester_name: $('#semesterName').val(),
+                start_date: $('#startDate').val(),
+                first_period_end_date: $('#firstPeriodEnd').val()
+            };
+            
+            $.ajax({
+                url: '/admin/semester',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify(data),
+                success: function(response) {
+                    if (response.success) {
+                        alert('学期配置保存成功！');
+                    } else {
+                        alert('保存失败：' + response.message);
+                    }
+                },
+                error: function() {
+                    alert('请求失败，请稍后重试');
+                }
+            });
+        });
+
+        // 显示添加班级表单
+        function showAddClassForm() {
+            $('#addClassForm').slideDown();
+            $('#newClassName').focus();
+        }
+
+        // 隐藏添加班级表单
+        function hideAddClassForm() {
+            $('#addClassForm').slideUp();
+            $('#newClassName').val('');
+        }
+
+        // 添加新班级
+        function addNewClass() {
+            const grade = $('#newGrade').val();
+            const className = $('#newClassName').val().trim();
+            
+            if (!className) {
+                alert('请输入班级名称');
+                return;
+            }
+            
+            // 检查是否重复
+            if ($(`.class-chip[data-class="${className}"]`).length > 0) {
+                alert('班级已存在');
+                return;
+            }
+            
+            // 查找是否已有该年级的section
+            let gradeSection = $(`.grade-section:has(.grade-title:contains("${grade}"))`);
+            
+            if (gradeSection.length > 0) {
+                // 如果年级已存在，添加到该年级的classes容器中
+                const chip = `<span class="class-chip" data-grade="${grade}" data-class="${className}">
+                    ${className}
+                    <button class="remove-btn" onclick="removeClass('${className}')">×</button>
+                </span>`;
+                gradeSection.find('.grade-classes').append(chip);
+            } else {
+                // 如果年级不存在，创建新的年级section
+                const newGradeSection = `
+                    <div class="grade-section">
+                        <h6 class="grade-title text-primary">${grade}</h6>
+                        <div class="grade-classes">
+                            <span class="class-chip" data-grade="${grade}" data-class="${className}">
+                                ${className}
+                                <button class="remove-btn" onclick="removeClass('${className}')">×</button>
+                            </span>
+                        </div>
+                    </div>
+                `;
+                $('#classList').append(newGradeSection);
+            }
+            
+            $('#newClassName').val('');
+            hideAddClassForm();
+        }
+
+        // 删除班级
+        function removeClass(className) {
+            const classChip = $(`.class-chip[data-class="${className}"]`);
+            const gradeSection = classChip.closest('.grade-section');
+            
+            classChip.fadeOut(300, function() {
+                $(this).remove();
+                
+                // 如果该年级下没有班级了，删除整个年级section
+                if (gradeSection.find('.class-chip').length === 0) {
+                    gradeSection.remove();
+                }
+            });
+        }
+
+        // 保存班级配置
+        function saveClassConfig() {
+            const classes = [];
+            $('.class-chip').each(function() {
+                classes.push({
+                    grade_name: $(this).data('grade'),
+                    class_name: $(this).data('class')
+                });
+            });
+            
+            const data = {
+                action: 'update_classes',
+                classes: classes
+            };
+            
+            $.ajax({
+                url: '/admin/semester',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify(data),
+                success: function(response) {
+                    if (response.success) {
+                        alert('班级配置保存成功！');
+                    } else {
+                        alert('保存失败：' + response.message);
+                    }
+                },
+                error: function() {
+                    alert('请求失败，请稍后重试');
+                }
+            });
+        }
+
+        // 载入默认班级
+        function loadDefaultClasses() {
+            if (confirm('载入默认班级配置将覆盖当前设置，确定继续吗？')) {
+                const defaultClasses = [
+                    {grade_name: '中预', class_name: '中预1班'}, {grade_name: '中预', class_name: '中预2班'},
+                    {grade_name: '中预', class_name: '中预3班'}, {grade_name: '中预', class_name: '中预4班'},
+                    {grade_name: '中预', class_name: '中预5班'}, {grade_name: '中预', class_name: '中预6班'},
+                    {grade_name: '中预', class_name: '中预7班'}, {grade_name: '中预', class_name: '中预8班'},
+                    {grade_name: '初一', class_name: '初一1班'}, {grade_name: '初一', class_name: '初一2班'},
+                    {grade_name: '初一', class_name: '初一3班'}, {grade_name: '初一', class_name: '初一4班'},
+                    {grade_name: '初一', class_name: '初一5班'}, {grade_name: '初一', class_name: '初一6班'},
+                    {grade_name: '初一', class_name: '初一7班'}, {grade_name: '初一', class_name: '初一8班'},
+                    {grade_name: '初二', class_name: '初二1班'}, {grade_name: '初二', class_name: '初二2班'},
+                    {grade_name: '初二', class_name: '初二3班'}, {grade_name: '初二', class_name: '初二4班'},
+                    {grade_name: '初二', class_name: '初二5班'}, {grade_name: '初二', class_name: '初二6班'},
+                    {grade_name: '初二', class_name: '初二7班'}, {grade_name: '初二', class_name: '初二8班'},
+                    {grade_name: '高一', class_name: '高一1班'}, {grade_name: '高一', class_name: '高一2班'},
+                    {grade_name: '高一', class_name: '高一3班'}, {grade_name: '高一', class_name: '高一4班'},
+                    {grade_name: '高一', class_name: '高一5班'}, {grade_name: '高一', class_name: '高一6班'},
+                    {grade_name: '高一', class_name: '高一7班'}, {grade_name: '高一', class_name: '高一8班'},
+                    {grade_name: '高二', class_name: '高二1班'}, {grade_name: '高二', class_name: '高二2班'},
+                    {grade_name: '高二', class_name: '高二3班'}, {grade_name: '高二', class_name: '高二4班'},
+                    {grade_name: '高二', class_name: '高二5班'}, {grade_name: '高二', class_name: '高二6班'},
+                    {grade_name: '高二', class_name: '高二7班'}, {grade_name: '高二', class_name: '高二8班'},
+                    {grade_name: '高一VCE', class_name: '高一VCE'}, 
+                    {grade_name: '高二VCE', class_name: '高二VCE'}
+                ];
+                
+                // 清空现有班级
+                $('#classList').empty();
+                
+                // 按年级分组添加默认班级
+                let gradeGroups = {};
+                defaultClasses.forEach(cls => {
+                    if (!gradeGroups[cls.grade_name]) {
+                        gradeGroups[cls.grade_name] = [];
+                    }
+                    gradeGroups[cls.grade_name].push(cls);
+                });
+                
+                // 按年级顺序添加
+                const gradeOrder = ['中预', '初一', '初二', '高一', '高二', '高一VCE', '高二VCE'];
+                gradeOrder.forEach(gradeName => {
+                    if (gradeGroups[gradeName]) {
+                        const gradeSection = `
+                            <div class="grade-section">
+                                <h6 class="grade-title text-primary">${gradeName}</h6>
+                                <div class="grade-classes">
+                                    ${gradeGroups[gradeName].map(cls => `
+                                        <span class="class-chip" data-grade="${cls.grade_name}" data-class="${cls.class_name}">
+                                            ${cls.class_name}
+                                            <button class="remove-btn" onclick="removeClass('${cls.class_name}')">×</button>
+                                        </span>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        `;
+                        $('#classList').append(gradeSection);
+                    }
+                });
+            }
+        }
+
+        // 导出备份 - 直接下载文件
+        function exportBackup() {
+            // 创建一个表单来触发文件下载
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = '/admin/semester';
+            form.style.display = 'none';
+            
+            // 添加action参数
+            const actionInput = document.createElement('input');
+            actionInput.type = 'hidden';
+            actionInput.name = 'action';
+            actionInput.value = 'export_backup';
+            form.appendChild(actionInput);
+            
+            // 添加Content-Type表示这是JSON请求
+            const csrfInput = document.createElement('input');
+            csrfInput.type = 'hidden';
+            csrfInput.name = 'json_data';
+            csrfInput.value = JSON.stringify({action: 'export_backup'});
+            form.appendChild(csrfInput);
+            
+            document.body.appendChild(form);
+            form.submit();
+            document.body.removeChild(form);
+            
+            // 显示提示信息
+            alert('正在生成数据备份，请稍等...');
+        }
+
+        // 显示重置确认
+        function showResetConfirm() {
+            $('#resetModal').modal('show');
+        }
+
+        // 确认重置
+        function confirmReset() {
+            const confirmCode = $('#confirmCode').val();
+            if (confirmCode !== 'RESET_CONFIRM') {
+                alert('确认码错误');
+                return;
+            }
+            
+            $.ajax({
+                url: '/admin/semester',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    action: 'reset_database',
+                    confirm_code: confirmCode
+                }),
+                success: function(response) {
+                    if (response.success) {
+                        alert('数据库重置成功！页面将刷新。');
+                        location.reload();
+                    } else {
+                        alert('重置失败：' + response.message);
+                    }
+                },
+                error: function() {
+                    alert('请求失败，请稍后重试');
+                }
+            });
+            
+            $('#resetModal').modal('hide');
+        }
+    </script>
+</body>
+</html>

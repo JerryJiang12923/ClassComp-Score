@@ -36,10 +36,8 @@ exports/
 *.xlsx
 !templates/*.xlsx
 
-# Test files
-tests/tools/
-test_*.py
-*test*.db
+# Test files and directories
+tests/
 
 # Logs
 *.log

@@ -100,28 +100,7 @@ class Score:
             return None, "使用情况分数必须在0-4之间", 0
         
         # 计算两周评分周期
-        def get_biweekly_period_end(date):
-            """计算日期所属的两周周期结束日"""
-            # 找到该日期所在的周日（本周或下周）
-            days_until_sunday = (6 - date.weekday()) % 7
-            if days_until_sunday == 0 and date.weekday() != 6:
-                days_until_sunday = 7
-            current_sunday = date + timedelta(days=days_until_sunday)
-            
-            # 计算从年初开始的周数
-            year_start = datetime(date.year, 1, 1).date()
-            days_from_start = (current_sunday - year_start).days
-            week_number = days_from_start // 7
-            
-            # 两周为一个周期
-            period_number = week_number // 2
-            period_end_sunday = year_start + timedelta(days=(period_number * 14 + 13))
-            
-            # 确保周期结束日是周日
-            while period_end_sunday.weekday() != 6:
-                period_end_sunday += timedelta(days=1)
-            
-            return period_end_sunday
+        from period_utils import get_biweekly_period_end
         
         now = datetime.now()
         current_date = now.date()

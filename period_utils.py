@@ -1,0 +1,109 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+周期计算工具模块
+统一管理评分周期相关的计算逻辑
+"""
+
+import sqlite3
+from datetime import datetime, timedelta
+
+def get_current_semester_config(conn=None):
+    """获取当前活跃的学期配置"""
+    should_close_conn = conn is None
+    if conn is None:
+        conn = sqlite3.connect('classcomp.db')
+        conn.row_factory = sqlite3.Row
+    
+    try:
+        cur = conn.cursor()
+        cur.execute('SELECT * FROM semester_config WHERE is_active = 1 LIMIT 1')
+        semester = cur.fetchone()
+        
+        if semester:
+            # 获取班级配置
+            cur.execute('''
+                SELECT grade_name, class_name
+                FROM semester_classes 
+                WHERE semester_id = ? AND is_active = 1
+                ORDER BY 
+                    CASE grade_name 
+                        WHEN '中预' THEN 1
+                        WHEN '初一' THEN 2
+                        WHEN '初二' THEN 3
+                        WHEN '高一' THEN 4
+                        WHEN '高二' THEN 5
+                        WHEN '高一VCE' THEN 6
+                        WHEN '高二VCE' THEN 7
+                        ELSE 99
+                    END,
+                    class_name
+            ''', (semester['id'],))
+            classes = cur.fetchall()
+            
+            return {
+                'semester': semester,
+                'classes': classes
+            }
+        return None
+    finally:
+        if should_close_conn:
+            conn.close()
+
+def calculate_period_info(target_date=None, semester_config=None):
+    """
+    根据学期配置计算评分周期信息
+    使用第一周期结束日期作为基准进行计算
+    """
+    if target_date is None:
+        target_date = datetime.now().date()
+    elif isinstance(target_date, str):
+        # 如果传入的是字符串，转换为date对象
+        target_date = datetime.strptime(target_date, '%Y-%m-%d').date()
+    
+    if semester_config is None:
+        config_data = get_current_semester_config()
+        if not config_data:
+            # 如果没有学期配置，使用默认逻辑
+            year_start = datetime(target_date.year, 1, 1).date()
+        else:
+            semester = config_data['semester']
+            first_period_end = datetime.strptime(semester['first_period_end_date'], '%Y-%m-%d').date()
+            # 从第一周期结束日期推算开始日期（往前13天）
+            year_start = first_period_end - timedelta(days=13)
+    else:
+        first_period_end = datetime.strptime(semester_config['first_period_end_date'], '%Y-%m-%d').date()
+        # 从第一周期结束日期推算开始日期（往前13天）
+        year_start = first_period_end - timedelta(days=13)
+    
+    # 找到该日期所在的周日（本周或下周）
+    days_until_sunday = (6 - target_date.weekday()) % 7
+    if days_until_sunday == 0 and target_date.weekday() != 6:
+        days_until_sunday = 7
+    current_sunday = target_date + timedelta(days=days_until_sunday)
+    
+    # 计算从周期开始的周数
+    days_from_start = (current_sunday - year_start).days
+    week_number = max(0, days_from_start // 7)
+    
+    # 两周为一个周期
+    period_number = week_number // 2
+    period_start = year_start + timedelta(days=(period_number * 14))
+    period_end = year_start + timedelta(days=(period_number * 14 + 13))
+    
+    # 确保周期结束日是周日
+    while period_end.weekday() != 6:
+        period_end += timedelta(days=1)
+    
+    return {
+        'period_number': period_number,
+        'period_start': period_start,
+        'period_end': period_end,
+        'year_start': year_start
+    }
+
+def get_biweekly_period_end(date, conn=None):
+    """计算日期所属的两周周期结束日（兼容旧接口）"""
+    period_info = calculate_period_info(target_date=date)
+    return period_info['period_end']

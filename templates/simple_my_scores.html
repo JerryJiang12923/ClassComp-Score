@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>我的评分历史 - 信息委员评分系统</title>
+    <title>{% if user.is_teacher() %}本年级评分数据{% else %}我的评分历史{% endif %} - 信息委员评分系统</title>
     <link href="{{ url_for('static', filename='bootstrap.min.css') }}" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
@@ -16,9 +16,16 @@
             </a>
             <div class="navbar-nav ms-auto">
                 <span class="navbar-text me-3">欢迎, {{ user.username }} ({{ user.class_name }})</span>
+                {% if not user.is_teacher() %}
                 <a class="nav-link" href="{{ url_for('index') }}">
                     <i class="fas fa-home me-1"></i>返回首页
                 </a>
+                {% endif %}
+                {% if user.is_admin() or user.is_teacher() %}
+                <a class="nav-link" href="{{ url_for('admin') }}">
+                    <i class="fas fa-chart-line me-1"></i>数据面板
+                </a>
+                {% endif %}
                 <a class="nav-link" href="{{ url_for('logout') }}">
                     <i class="fas fa-sign-out-alt me-1"></i>退出
                 </a>
@@ -29,7 +36,11 @@
     <div class="container py-4">
         <h2 class="mb-4">
             <i class="fas fa-history me-2"></i>
-            我的评分历史
+            {% if user.is_teacher() %}
+                本年级评分数据
+            {% else %}
+                我的评分历史
+            {% endif %}
         </h2>
 
         <div class="card">

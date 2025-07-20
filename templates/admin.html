@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>管理员面板 - 信息委员评分系统</title>
+    <title>{% if user.is_admin() %}管理员面板{% else %}教师数据查看{% endif %} - 信息委员评分系统</title>
     <link href="{{ url_for('static', filename='bootstrap.min.css') }}" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="https://cdn.datatables.net/1.11.5/css/dataTables.bootstrap5.min.css" rel="stylesheet">
@@ -22,7 +22,7 @@
         .chart-container { position: relative; height: 300px; margin-bottom: 20px; }
     </style>
 </head>
-<body>
+<body data-user-type="{% if user.is_teacher() and not ('全校' in user.class_name or 'ALL' in user.class_name.upper()) %}regular_teacher{% else %}admin_or_school_teacher{% endif %}">
     <!-- 导航栏 -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
         <div class="container">
@@ -31,13 +31,23 @@
                 信息委员评分系统
             </a>
             <div class="navbar-nav ms-auto">
-                <span class="navbar-text me-3 text-white">管理员: {{ user.username }}</span>
-                <a class="nav-link" href="{{ url_for('index') }}">
-                    <i class="fas fa-home me-1"></i>返回首页
-                </a>
-                <a class="nav-link" href="{{ url_for('admin_users') }}">
-                    <i class="fas fa-users me-1"></i>用户管理
-                </a>
+                {% if user.is_admin() %}
+                    <span class="navbar-text me-3 text-white">管理员: {{ user.username }}</span>
+                    <a class="nav-link" href="{{ url_for('index') }}">
+                        <i class="fas fa-home me-1"></i>返回首页
+                    </a>
+                    <a class="nav-link" href="{{ url_for('admin_users') }}">
+                        <i class="fas fa-users me-1"></i>用户管理
+                    </a>
+                    <a class="nav-link" href="{{ url_for('admin_semester') }}">
+                        <i class="fas fa-cog me-1"></i>学期设置
+                    </a>
+                {% else %}
+                    <span class="navbar-text me-3 text-white">教师: {{ user.username }}</span>
+                    <a class="nav-link" href="{{ url_for('my_scores') }}">
+                        <i class="fas fa-tasks me-1"></i>班级监测
+                    </a>
+                {% endif %}
                 <a class="nav-link" href="{{ url_for('logout') }}">
                     <i class="fas fa-sign-out-alt me-1"></i>退出
                 </a>
@@ -48,7 +58,11 @@
     <div class="container-fluid py-4">
         <h2 class="mb-4 text-center">
             <i class="fas fa-cog me-2"></i>
-            管理员面板
+            {% if user.is_admin() %}
+                管理员面板
+            {% else %}
+                教师数据查看面板
+            {% endif %}
         </h2>
 
         <!-- 统计概览 -->
@@ -192,7 +206,17 @@
             <div class="col-lg-6 mb-3">
                 <div class="card">
                     <div class="card-header">
-                        <h5 class="mb-0">年级评分分布</h5>
+                        <h5 class="mb-0">
+                            {% if user.is_teacher() %}
+                                {% if '全校' in user.class_name or 'ALL' in user.class_name.upper() %}
+                                    全校年级评分分布
+                                {% else %}
+                                    本年级班级本周期完成情况
+                                {% endif %}
+                            {% else %}
+                                年级评分分布
+                            {% endif %}
+                        </h5>
                     </div>
                     <div class="card-body">
                         <canvas id="gradeChart"></canvas>
@@ -263,26 +287,67 @@
             
             // 年级评分分布图
             const gradeCtx = document.getElementById('gradeChart').getContext('2d');
-            new Chart(gradeCtx, {
-                type: 'doughnut',
-                data: {
-                    labels: chartData.gradeStats.map(item => item.target_grade),
-                    datasets: [{
-                        data: chartData.gradeStats.map(item => item.count),
-                        backgroundColor: [
-                            '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0',
-                            '#9966FF', '#FF9F40', '#FF6384', '#C9CBCF'
-                        ]
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { position: 'bottom' }
+            
+            // 通过DOM元素传递用户类型信息
+            const userType = document.body.dataset.userType;
+            const isRegularTeacher = userType === 'regular_teacher';
+            
+            if (isRegularTeacher) {
+                // 普通教师：显示班级本周期完成情况
+                const completedClasses = chartData.gradeStats.filter(item => item.count === 1);
+                const pendingClasses = chartData.gradeStats.filter(item => item.count === 0);
+                
+                new Chart(gradeCtx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['已完成班级', '待完成班级'],
+                        datasets: [{
+                            data: [completedClasses.length, pendingClasses.length],
+                            backgroundColor: ['#28a745', '#fd7e14']
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { position: 'bottom' },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        const label = context.label;
+                                        const value = context.parsed;
+                                        const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                        const percentage = ((value / total) * 100).toFixed(1);
+                                        return `${label}: ${value}个班级 (${percentage}%)`;
+                                    }
+                                }
+                            }
+                        }
                     }
-                }
-            });
+                });
+            } else {
+                // 管理员和全校数据教师：显示年级分布
+                new Chart(gradeCtx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: chartData.gradeStats.map(item => item.display_grade || item.target_grade),
+                        datasets: [{
+                            data: chartData.gradeStats.map(item => item.count),
+                            backgroundColor: [
+                                '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0',
+                                '#9966FF', '#FF9F40', '#FF6384', '#C9CBCF'
+                            ]
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { position: 'bottom' }
+                        }
+                    }
+                });
+            }
 
             // 每日评分趋势图
             const dailyCtx = document.getElementById('dailyChart').getContext('2d');
