@@ -53,7 +53,7 @@ def create_semester_tables():
             ''')
         else:
             # PostgreSQL 版本
-            # 创建学期配置表
+            # 创建学期配置表（必须先创建，因为semester_classes表有外键引用）
             cur.execute('''
                 CREATE TABLE IF NOT EXISTS semester_config (
                     id SERIAL PRIMARY KEY,
@@ -67,7 +67,10 @@ def create_semester_tables():
                 )
             ''')
             
-            # 创建学期班级配置表
+            # 确保semester_config表已经提交，然后再创建有外键约束的表
+            conn.commit()
+            
+            # 创建学期班级配置表（带外键约束）
             cur.execute('''
                 CREATE TABLE IF NOT EXISTS semester_classes (
                     id SERIAL PRIMARY KEY,
@@ -83,11 +86,6 @@ def create_semester_tables():
             ''')
         
         # 检查是否有当前学期配置，使用原子操作防止重复创建
-        if is_sqlite:
-            cur.execute('BEGIN IMMEDIATE')  # SQLite 立即锁定防止竞态条件
-        else:
-            cur.execute('BEGIN')  # PostgreSQL 使用普通事务
-            
         try:
             cur.execute('SELECT COUNT(*) FROM semester_config WHERE is_active = 1')
             active_count = cur.fetchone()[0]
@@ -145,13 +143,12 @@ def create_semester_tables():
                         pass
                 
                 print(f"创建了默认学期配置，包含 {len(default_classes)} 个班级")
+                # 提交所有更改
                 conn.commit()
             else:
                 print(f"已存在 {active_count} 个活跃学期配置，跳过创建")
-                conn.commit()
                 
         except Exception as e:
-            conn.rollback()
             print(f"学期配置创建失败: {e}")
             raise e
         
@@ -171,11 +168,6 @@ def create_default_semester_config():
         is_sqlite = db_url.startswith("sqlite")
         
         # 检查是否有当前学期配置
-        if is_sqlite:
-            cur.execute('BEGIN IMMEDIATE')  # SQLite 立即锁定防止竞态条件
-        else:
-            cur.execute('BEGIN')  # PostgreSQL 使用普通事务
-            
         try:
             cur.execute('SELECT COUNT(*) FROM semester_config WHERE is_active = 1')
             active_count = cur.fetchone()[0]
@@ -230,13 +222,12 @@ def create_default_semester_config():
                         pass
                 
                 print(f"创建了默认学期配置，包含 {len(default_classes)} 个班级")
+                # 提交所有更改
                 conn.commit()
             else:
                 print(f"已存在 {active_count} 个活跃学期配置，跳过创建")
-                conn.commit()
                 
         except Exception as e:
-            conn.rollback()
             print(f"默认学期配置创建失败: {e}")
             raise e
         
