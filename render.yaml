@@ -17,8 +17,13 @@ services:
       - key: SECRET_KEY
         generateValue: true
       - key: EXPORT_FOLDER
-        value: /tmp/exports
+        value: ./exports
       - key: FLASK_ENV
         value: production
       - key: PYTHONUNBUFFERED
         value: 1
+      - key: PORT
+        fromService:
+          type: web
+          name: classcomp-score
+          property: port
