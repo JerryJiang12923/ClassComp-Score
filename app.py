@@ -1433,27 +1433,33 @@ def admin():
             if flask_env:
                 return flask_env
             
-            # 2. 检查Flask的debug模式
-            if app.debug:
-                return "development"
+            # 2. 检查常见的生产环境标识 - 最高优先级
+            if os.getenv('RENDER') or os.getenv('HEROKU') or os.getenv('RAILWAY'):
+                return "production"
             
-            # 3. 检查是否在开发服务器中运行
-            import __main__
-            main_file = getattr(__main__, '__file__', '')
-            if main_file and ('app.py' in main_file or 'run.py' in main_file):
-                return "development"
+            # 3. 检查数据库URL - PostgreSQL通常意味着生产环境
+            db_url = os.getenv("DATABASE_URL", "")
+            if db_url.startswith("postgresql://"):
+                return "production"
             
             # 4. 检查是否有WSGI服务器标识
             server_software = os.getenv('SERVER_SOFTWARE', '')
             if 'waitress' in server_software.lower() or 'gunicorn' in server_software.lower():
                 return "production"
             
-            # 5. 检查常见的生产环境标识
-            if os.getenv('RENDER') or os.getenv('HEROKU') or os.getenv('RAILWAY'):
-                return "production"
+            # 5. 检查Flask的debug模式 - 只在没有明确生产标识时才考虑
+            if app.debug:
+                return "development"
             
-            # 6. 默认根据debug模式判断
-            return "development" if app.debug else "production"
+            # 6. 检查是否在开发服务器中运行 - 只在本地环境时才考虑
+            if not os.getenv('RENDER') and not os.getenv('HEROKU') and not os.getenv('RAILWAY'):
+                import __main__
+                main_file = getattr(__main__, '__file__', '')
+                if main_file and ('app.py' in main_file or 'run.py' in main_file):
+                    return "development"
+            
+            # 7. 默认判断：有PostgreSQL连接 = 生产环境
+            return "production" if db_url.startswith("postgresql://") else "development"
 
         detected_env = detect_environment()
         
@@ -1529,27 +1535,130 @@ def admin():
         
         actual_server = detect_actual_server()
         
-        # 运行环境信息
-        environment_info = {
-            'database_type': db_type,
-            'database_url': db_url.split('@')[-1] if '@' in db_url else db_url,  # 隐藏敏感信息
-            'python_version': f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
-            'platform': platform.platform(),
-            'cpu_count': psutil.cpu_count(),
-            'memory_total': f"{psutil.virtual_memory().total // (1024**3)} GB",
-            'memory_available': f"{psutil.virtual_memory().available // (1024**3)} GB",
-            'flask_env': detected_env,
-            'flask_env_var': os.getenv("FLASK_ENV", "未设置"),
-            'debug_mode': app.debug,
-            'wsgi_server': actual_server,
-            'server_software': os.getenv('SERVER_SOFTWARE', '直接运行')
-        }
+        # 运行环境信息 - 只有admin能看到
+        environment_info = None
+        if current_user.is_admin():
+            environment_info = {
+                'database_type': db_type,
+                'database_url': db_url.split('@')[-1] if '@' in db_url else db_url,  # 隐藏敏感信息
+                'python_version': f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+                'platform': platform.platform(),
+                'cpu_count': psutil.cpu_count(),
+                'memory_total': f"{psutil.virtual_memory().total // (1024**3)} GB",
+                'memory_available': f"{psutil.virtual_memory().available // (1024**3)} GB",
+                'flask_env': detected_env,
+                'flask_env_var': os.getenv("FLASK_ENV", "未设置"),
+                'debug_mode': app.debug,
+                'wsgi_server': actual_server,
+                'server_software': os.getenv('SERVER_SOFTWARE', '直接运行')
+            }
 
         # 年级统计（VCE年级合并，根据教师类型显示不同数据）
-        if current_user.is_teacher():
-            # 检查是否是全校数据教师
-            if current_user.class_name and ('全校' in current_user.class_name or 'ALL' in current_user.class_name.upper()):
-                # 全校数据教师看年级分布
+        grade_stats = []
+        try:
+            if current_user.is_teacher():
+                # 检查是否是全校数据教师
+                if current_user.class_name and ('全校' in current_user.class_name or 'ALL' in current_user.class_name.upper()):
+                    # 全校数据教师看年级分布
+                    cur.execute('''
+                        SELECT 
+                            CASE 
+                                WHEN target_grade LIKE '%VCE%' THEN 'VCE'
+                                ELSE target_grade 
+                            END as display_grade,
+                            COUNT(*) as count, 
+                            AVG(total) as avg_score
+                        FROM scores 
+                        GROUP BY 
+                            CASE 
+                                WHEN target_grade LIKE '%VCE%' THEN 'VCE'
+                                ELSE target_grade 
+                            END
+                        ORDER BY 
+                            CASE 
+                                WHEN target_grade LIKE '%VCE%' THEN 'VCE'
+                                ELSE target_grade 
+                            END
+                    ''')
+                    grade_stats = cur.fetchall()
+                else:
+                    # 普通教师看本年级各班级的本周期完成情况
+                    # 使用学期配置计算当前周期
+                    try:
+                        config_data = get_current_semester_config(conn)
+                        if config_data:
+                            period_info = calculate_period_info(semester_config=config_data['semester'])
+                        else:
+                            # 回退到默认逻辑
+                            period_info = calculate_period_info()
+                        
+                        period_start = period_info['period_start']
+                        period_end = period_info['period_end']
+                        period_number = period_info['period_number']
+                        
+                        # 高一高二教师需要包含对应的VCE班级
+                        if teacher_grade in ['高一', '高二']:
+                            teacher_grades = [teacher_grade, f'{teacher_grade}VCE']
+                        else:
+                            teacher_grades = [teacher_grade]
+                        
+                        # 尝试基于学期配置中的活跃班级查询
+                        grade_placeholders = ','.join(['?' for _ in teacher_grades])
+                        cur.execute(f'''
+                            SELECT 
+                                sc.class_name as display_grade,
+                                CASE WHEN COUNT(s.id) > 0 THEN 1 ELSE 0 END as count, 
+                                CASE WHEN COUNT(s.id) > 0 THEN 8.5 ELSE 0 END as avg_score
+                            FROM semester_classes sc
+                            LEFT JOIN users u ON sc.class_name = u.class_name AND u.role = 'student'
+                            LEFT JOIN scores s ON u.id = s.user_id 
+                                AND DATE(s.created_at) >= ? 
+                                AND DATE(s.created_at) <= ?
+                            WHERE sc.is_active = 1 
+                                AND sc.semester_id = (SELECT id FROM semester_config WHERE is_active = 1)
+                                AND sc.grade_name IN ({grade_placeholders})
+                            GROUP BY sc.class_name, sc.grade_name
+                            ORDER BY 
+                                CASE sc.grade_name 
+                                    WHEN '中预' THEN 1 
+                                    WHEN '初一' THEN 2 
+                                    WHEN '初二' THEN 3 
+                                    WHEN '高一' THEN 4 
+                                    WHEN '高二' THEN 5 
+                                    WHEN '高一VCE' THEN 6 
+                                    WHEN '高二VCE' THEN 7 
+                                    ELSE 8 
+                                END, 
+                                sc.class_name
+                        ''', [period_start.strftime('%Y-%m-%d'), period_end.strftime('%Y-%m-%d')] + teacher_grades)
+                        grade_stats = cur.fetchall()
+                    except Exception as semester_error:
+                        print(f"学期配置查询失败，回退到简单统计: {semester_error}")
+                        # 回退到简单的年级统计
+                        cur.execute('''
+                            SELECT 
+                                CASE 
+                                    WHEN target_grade LIKE '%VCE%' THEN 'VCE'
+                                    ELSE target_grade 
+                                END as display_grade,
+                                COUNT(*) as count, 
+                                AVG(total) as avg_score
+                            FROM scores 
+                            WHERE target_grade LIKE ?
+                            GROUP BY 
+                                CASE 
+                                    WHEN target_grade LIKE '%VCE%' THEN 'VCE'
+                                    ELSE target_grade 
+                                END
+                            ORDER BY 
+                                CASE 
+                                    WHEN target_grade LIKE '%VCE%' THEN 'VCE'
+                                    ELSE target_grade 
+                                END
+                        ''', (f'%{teacher_grade}%',))
+                        grade_stats = cur.fetchall()
+            else:
+                # 管理员看年级分布
                 cur.execute('''
                     SELECT 
                         CASE 
@@ -1570,83 +1679,52 @@ def admin():
                             ELSE target_grade 
                         END
                 ''')
-            else:
-                # 普通教师看本年级各班级的本周期完成情况
-                # 使用学期配置计算当前周期
-                config_data = get_current_semester_config(conn)
-                if config_data:
-                    period_info = calculate_period_info(semester_config=config_data['semester'])
-                else:
-                    # 回退到默认逻辑
-                    period_info = calculate_period_info()
-                
-                period_start = period_info['period_start']
-                period_end = period_info['period_end']
-                period_number = period_info['period_number']
-                
-                # 高一高二教师需要包含对应的VCE班级
-                if teacher_grade in ['高一', '高二']:
-                    teacher_grades = [teacher_grade, f'{teacher_grade}VCE']
-                else:
-                    teacher_grades = [teacher_grade]
-                
-                # 修复：基于学期配置中的活跃班级，而不是用户表中的所有班级
-                grade_placeholders = ','.join(['?' for _ in teacher_grades])
-                cur.execute(f'''
-                    SELECT 
-                        sc.class_name as display_grade,
-                        CASE WHEN COUNT(s.id) > 0 THEN 1 ELSE 0 END as count, 
-                        CASE WHEN COUNT(s.id) > 0 THEN 8.5 ELSE 0 END as avg_score
-                    FROM semester_classes sc
-                    LEFT JOIN users u ON sc.class_name = u.class_name AND u.role = 'student'
-                    LEFT JOIN scores s ON u.id = s.user_id 
-                        AND DATE(s.created_at) >= ? 
-                        AND DATE(s.created_at) <= ?
-                    WHERE sc.is_active = 1 
-                        AND sc.semester_id = (SELECT id FROM semester_config WHERE is_active = 1)
-                        AND sc.grade_name IN ({grade_placeholders})
-                    GROUP BY sc.class_name, sc.grade_name
-                    ORDER BY 
-                        CASE sc.grade_name 
-                            WHEN '中预' THEN 1 
-                            WHEN '初一' THEN 2 
-                            WHEN '初二' THEN 3 
-                            WHEN '高一' THEN 4 
-                            WHEN '高二' THEN 5 
-                            WHEN '高一VCE' THEN 6 
-                            WHEN '高二VCE' THEN 7 
-                            ELSE 8 
-                        END, 
-                        sc.class_name
-                ''', [period_start.strftime('%Y-%m-%d'), period_end.strftime('%Y-%m-%d')] + teacher_grades)
-        else:
-            # 管理员看年级分布
-            cur.execute('''
-                SELECT 
-                    CASE 
-                        WHEN target_grade LIKE '%VCE%' THEN 'VCE'
-                        ELSE target_grade 
-                    END as display_grade,
-                    COUNT(*) as count, 
-                    AVG(total) as avg_score
-                FROM scores 
-                GROUP BY 
-                    CASE 
-                        WHEN target_grade LIKE '%VCE%' THEN 'VCE'
-                        ELSE target_grade 
-                    END
-                ORDER BY 
-                    CASE 
-                        WHEN target_grade LIKE '%VCE%' THEN 'VCE'
-                        ELSE target_grade 
-                    END
-            ''')
-        grade_stats = cur.fetchall()
+                grade_stats = cur.fetchall()
+        except Exception as grade_error:
+            print(f"年级统计查询失败: {grade_error}")
+            grade_stats = []  # 设置为空列表，避免页面崩溃
         
         # 每日趋势（最近7天，根据教师类型显示不同数据）
-        if current_user.is_teacher():
-            if current_user.class_name and ('全校' in current_user.class_name or 'ALL' in current_user.class_name.upper()):
-                # 全校数据教师看所有趋势
+        daily_trend = []
+        try:
+            if current_user.is_teacher():
+                if current_user.class_name and ('全校' in current_user.class_name or 'ALL' in current_user.class_name.upper()):
+                    # 全校数据教师看所有趋势
+                    if is_sqlite:
+                        cur.execute(f'''
+                            SELECT {date_format} as date, COUNT(*) as count
+                            FROM scores 
+                            WHERE created_at >= datetime('now', '-7 days')
+                            GROUP BY {date_format}
+                            ORDER BY date
+                        ''')
+                    else:
+                        cur.execute(f'''
+                            SELECT {date_format} as date, COUNT(*) as count
+                            FROM scores 
+                            WHERE created_at >= CURRENT_DATE - INTERVAL '7 days'
+                            GROUP BY {date_format}
+                            ORDER BY date
+                        ''')
+                else:
+                    # 普通教师只看本年级趋势
+                    if is_sqlite:
+                        cur.execute(f'''
+                            SELECT {date_format} as date, COUNT(*) as count
+                            FROM scores 
+                            WHERE created_at >= datetime('now', '-7 days') AND target_grade LIKE '%{teacher_grade}%'
+                            GROUP BY {date_format}
+                            ORDER BY date
+                        ''')
+                    else:
+                        cur.execute(f'''
+                            SELECT {date_format} as date, COUNT(*) as count
+                            FROM scores 
+                            WHERE created_at >= CURRENT_DATE - INTERVAL '7 days' AND target_grade LIKE '%{teacher_grade}%'
+                            GROUP BY {date_format}
+                            ORDER BY date
+                        ''')
+            else:
                 if is_sqlite:
                     cur.execute(f'''
                         SELECT {date_format} as date, COUNT(*) as count
@@ -1663,42 +1741,10 @@ def admin():
                         GROUP BY {date_format}
                         ORDER BY date
                     ''')
-            else:
-                # 普通教师只看本年级趋势
-                if is_sqlite:
-                    cur.execute(f'''
-                        SELECT {date_format} as date, COUNT(*) as count
-                        FROM scores 
-                        WHERE created_at >= datetime('now', '-7 days') AND target_grade LIKE '%{teacher_grade}%'
-                        GROUP BY {date_format}
-                        ORDER BY date
-                    ''')
-                else:
-                    cur.execute(f'''
-                        SELECT {date_format} as date, COUNT(*) as count
-                        FROM scores 
-                        WHERE created_at >= CURRENT_DATE - INTERVAL '7 days' AND target_grade LIKE '%{teacher_grade}%'
-                        GROUP BY {date_format}
-                        ORDER BY date
-                    ''')
-        else:
-            if is_sqlite:
-                cur.execute(f'''
-                    SELECT {date_format} as date, COUNT(*) as count
-                    FROM scores 
-                    WHERE created_at >= datetime('now', '-7 days')
-                    GROUP BY {date_format}
-                    ORDER BY date
-                ''')
-            else:
-                cur.execute(f'''
-                    SELECT {date_format} as date, COUNT(*) as count
-                    FROM scores 
-                    WHERE created_at >= CURRENT_DATE - INTERVAL '7 days'
-                    GROUP BY {date_format}
-                    ORDER BY date
-                ''')
-        daily_trend = cur.fetchall()
+            daily_trend = cur.fetchall()
+        except Exception as trend_error:
+            print(f"每日趋势查询失败: {trend_error}")
+            daily_trend = []  # 设置为空列表，避免页面崩溃
         
         # 当前月份
         from datetime import datetime
@@ -1717,6 +1763,12 @@ def admin():
                              current_month=current_month,
                              today=today,
                              environment_info=environment_info)
+    except Exception as e:
+        import traceback
+        print(f"Admin 页面错误: {e}")
+        print(f"详细堆栈: {traceback.format_exc()}")
+        # 返回错误信息，帮助调试
+        return f"Admin 页面错误: {str(e)}<br><br>详细信息:<br><pre>{traceback.format_exc()}</pre>", 500
     finally:
         put_conn(conn)
 

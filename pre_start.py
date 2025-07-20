@@ -47,19 +47,65 @@ def check_environment():
     return True
 
 def check_database_connection():
-    """检查数据库连接"""
-    print("🔍 检查数据库连接...")
+    """检查数据库连接和表结构"""
+    print("🔍 检查数据库连接和表结构...")
     
     try:
         from db import get_conn, put_conn
+            
         conn = get_conn()
         cur = conn.cursor()
+        
+        # 检查数据库连接
         cur.execute('SELECT 1')
-        put_conn(conn)
         print("✅ 数据库连接正常")
+        
+        # 检查基本表是否存在
+        basic_tables = ['users', 'scores', 'scores_history']
+        missing_tables = []
+        
+        db_url = os.getenv('DATABASE_URL', 'sqlite:///classcomp.db')
+        is_sqlite = db_url.startswith('sqlite')
+        
+        for table_name in basic_tables:
+            try:
+                cur.execute(f'SELECT COUNT(*) FROM {table_name}')
+                count = cur.fetchone()[0]
+                print(f"✅ {table_name} 表存在 ({count} 条记录)")
+            except Exception:
+                missing_tables.append(table_name)
+                print(f"❌ {table_name} 表不存在")
+        
+        # 检查semester配置表
+        semester_tables = ['semester_config', 'semester_classes']
+        missing_semester_tables = []
+        
+        for table_name in semester_tables:
+            try:
+                cur.execute(f'SELECT COUNT(*) FROM {table_name}')
+                count = cur.fetchone()[0]
+                print(f"✅ {table_name} 表存在 ({count} 条记录)")
+            except Exception:
+                missing_semester_tables.append(table_name)
+                print(f"❌ {table_name} 表不存在")
+        
+        put_conn(conn)
+        
+        # 如果有缺失的表，尝试初始化数据库
+        if missing_tables or missing_semester_tables:
+            print("🔧 检测到缺失的表，尝试初始化数据库...")
+            try:
+                from init_db import init_database
+                init_database()
+                print("✅ 数据库初始化完成")
+            except Exception as init_error:
+                print(f"❌ 数据库初始化失败: {init_error}")
+                return False
+        
         return True
+        
     except Exception as e:
-        print(f"❌ 数据库连接失败: {e}")
+        print(f"❌ 数据库检查失败: {e}")
         return False
 
 def check_dependencies():

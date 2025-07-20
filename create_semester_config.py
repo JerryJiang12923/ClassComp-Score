@@ -83,7 +83,11 @@ def create_semester_tables():
             ''')
         
         # 检查是否有当前学期配置，使用原子操作防止重复创建
-        conn.execute('BEGIN IMMEDIATE')  # 立即锁定防止竞态条件
+        if is_sqlite:
+            cur.execute('BEGIN IMMEDIATE')  # SQLite 立即锁定防止竞态条件
+        else:
+            cur.execute('BEGIN')  # PostgreSQL 使用普通事务
+            
         try:
             cur.execute('SELECT COUNT(*) FROM semester_config WHERE is_active = 1')
             active_count = cur.fetchone()[0]
@@ -91,13 +95,19 @@ def create_semester_tables():
             if active_count == 0:
                 print("创建默认学期配置...")
                 
-                # 创建默认学期配置
-                cur.execute('''
-                    INSERT INTO semester_config (semester_name, start_date, first_period_end_date)
-                    VALUES (?, ?, ?)
-                ''', ('2025年第一学期', '2025-07-01', '2025-07-27'))
-                
-                semester_id = cur.lastrowid
+                # 创建默认学期配置，使用正确的占位符
+                if is_sqlite:
+                    cur.execute('''
+                        INSERT INTO semester_config (semester_name, start_date, first_period_end_date)
+                        VALUES (?, ?, ?)
+                    ''', ('2025年第一学期', '2025-07-01', '2025-07-27'))
+                    semester_id = cur.lastrowid
+                else:
+                    cur.execute('''
+                        INSERT INTO semester_config (semester_name, start_date, first_period_end_date)
+                        VALUES (%s, %s, %s) RETURNING id
+                    ''', ('2025年第一学期', '2025-07-01', '2025-07-27'))
+                    semester_id = cur.fetchone()[0]
                 
                 # 创建默认班级配置
                 default_classes = [
@@ -149,6 +159,89 @@ def create_semester_tables():
         put_conn(conn)
     
     print("学期配置表创建完成")
+
+def create_default_semester_config():
+    """创建默认学期配置（独立函数，不依赖表创建）"""
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        
+        # 检测数据库类型
+        db_url = os.getenv("DATABASE_URL", "sqlite:///classcomp.db")
+        is_sqlite = db_url.startswith("sqlite")
+        
+        # 检查是否有当前学期配置
+        if is_sqlite:
+            cur.execute('BEGIN IMMEDIATE')  # SQLite 立即锁定防止竞态条件
+        else:
+            cur.execute('BEGIN')  # PostgreSQL 使用普通事务
+            
+        try:
+            cur.execute('SELECT COUNT(*) FROM semester_config WHERE is_active = 1')
+            active_count = cur.fetchone()[0]
+            
+            if active_count == 0:
+                print("创建默认学期配置...")
+                
+                # 创建默认学期配置，使用正确的占位符
+                if is_sqlite:
+                    cur.execute('''
+                        INSERT INTO semester_config (semester_name, start_date, first_period_end_date)
+                        VALUES (?, ?, ?)
+                    ''', ('2025年第一学期', '2025-07-01', '2025-07-27'))
+                    semester_id = cur.lastrowid
+                else:
+                    cur.execute('''
+                        INSERT INTO semester_config (semester_name, start_date, first_period_end_date)
+                        VALUES (%s, %s, %s) RETURNING id
+                    ''', ('2025年第一学期', '2025-07-01', '2025-07-27'))
+                    semester_id = cur.fetchone()[0]
+                
+                # 创建默认班级配置
+                default_classes = [
+                    ('中预', '中预1班'), ('中预', '中预2班'), ('中预', '中预3班'), ('中预', '中预4班'),
+                    ('中预', '中预5班'), ('中预', '中预6班'), ('中预', '中预7班'), ('中预', '中预8班'),
+                    ('初一', '初一1班'), ('初一', '初一2班'), ('初一', '初一3班'), ('初一', '初一4班'),
+                    ('初一', '初一5班'), ('初一', '初一6班'), ('初一', '初一7班'), ('初一', '初一8班'),
+                    ('初二', '初二1班'), ('初二', '初二2班'), ('初二', '初二3班'), ('初二', '初二4班'),
+                    ('初二', '初二5班'), ('初二', '初二6班'), ('初二', '初二7班'), ('初二', '初二8班'),
+                    ('高一', '高一1班'), ('高一', '高一2班'), ('高一', '高一3班'), ('高一', '高一4班'),
+                    ('高一', '高一5班'), ('高一', '高一6班'), ('高一', '高一7班'), ('高一', '高一8班'),
+                    ('高二', '高二1班'), ('高二', '高二2班'), ('高二', '高二3班'), ('高二', '高二4班'),
+                    ('高二', '高二5班'), ('高二', '高二6班'), ('高二', '高二7班'), ('高二', '高二8班'),
+                    ('高一VCE', '高一VCE'),
+                    ('高二VCE', '高二VCE'),
+                ]
+                
+                for grade, class_name in default_classes:
+                    try:
+                        if is_sqlite:
+                            cur.execute('''
+                                INSERT INTO semester_classes (semester_id, grade_name, class_name)
+                                VALUES (?, ?, ?)
+                            ''', (semester_id, grade, class_name))
+                        else:
+                            cur.execute('''
+                                INSERT INTO semester_classes (semester_id, grade_name, class_name)
+                                VALUES (%s, %s, %s)
+                            ''', (semester_id, grade, class_name))
+                    except Exception:
+                        # 班级已存在，跳过
+                        pass
+                
+                print(f"创建了默认学期配置，包含 {len(default_classes)} 个班级")
+                conn.commit()
+            else:
+                print(f"已存在 {active_count} 个活跃学期配置，跳过创建")
+                conn.commit()
+                
+        except Exception as e:
+            conn.rollback()
+            print(f"默认学期配置创建失败: {e}")
+            raise e
+        
+    finally:
+        put_conn(conn)
 
 def test_semester_config():
     """测试学期配置功能"""

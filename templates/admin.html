@@ -189,9 +189,11 @@
                             <button class="btn btn-info" onclick="showStatsModal()">
                                 <i class="fas fa-chart-pie me-2"></i>详细统计
                             </button>
+                            {% if user.is_admin() and environment_info %}
                             <button class="btn btn-success" onclick="showEnvironmentInfo()">
                                 <i class="fas fa-server me-2"></i>环境信息
                             </button>
+                            {% endif %}
                             <button class="btn btn-warning" onclick="exportAllData()">
                                 <i class="fas fa-file-excel me-2"></i>导出全部数据
                             </button>
@@ -240,6 +242,7 @@
     </div>
 
     <!-- 环境信息模态框 -->
+    {% if user.is_admin() and environment_info %}
     <div class="modal fade" id="environmentModal" tabindex="-1" aria-labelledby="environmentModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
@@ -353,6 +356,7 @@
             </div>
         </div>
     </div>
+    {% endif %}
 
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
