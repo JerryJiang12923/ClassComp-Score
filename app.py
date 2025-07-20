@@ -237,34 +237,67 @@ def admin_users():
                     """, (username, password_hash, role, class_name))
                     conn.commit()
                     flash(f'用户 {username} 创建成功', 'success')
+        # 检测数据库类型
+        db_url = os.getenv("DATABASE_URL", "sqlite:///classcomp.db")
+        is_sqlite = db_url.startswith("sqlite")
         
         # 查看所有用户及评分统计 - 教师按用户名智能排序
-        cur.execute('''
-            SELECT u.id, u.username, u.class_name, u.role, u.created_at,
-                   COALESCE(sc.score_count, 0) as score_count
-            FROM users u
-            LEFT JOIN (
-                SELECT user_id, COUNT(*) as score_count
-                FROM scores
-                GROUP BY user_id
-            ) sc ON u.id = sc.user_id
-            ORDER BY 
-                CASE u.role 
-                    WHEN 'admin' THEN 1 
-                    WHEN 'student' THEN 2 
-                    WHEN 'teacher' THEN 3 
-                    ELSE 4 
-                END,
-                -- 教师按用户名智能排序：t+数字的按数字排序，其他按字母排序
-                CASE 
-                    WHEN u.role = 'teacher' AND u.username LIKE 't%' AND u.username GLOB 't[0-9]*' THEN 
-                        CAST(SUBSTR(u.username, 2) AS INTEGER)
-                    WHEN u.role = 'teacher' THEN 999
-                    ELSE 0
-                END,
-                u.class_name,
-                u.username
-        ''')
+        if is_sqlite:
+            # SQLite 版本 - 使用 GLOB
+            cur.execute('''
+                SELECT u.id, u.username, u.class_name, u.role, u.created_at,
+                       COALESCE(sc.score_count, 0) as score_count
+                FROM users u
+                LEFT JOIN (
+                    SELECT user_id, COUNT(*) as score_count
+                    FROM scores
+                    GROUP BY user_id
+                ) sc ON u.id = sc.user_id
+                ORDER BY 
+                    CASE u.role 
+                        WHEN 'admin' THEN 1 
+                        WHEN 'student' THEN 2 
+                        WHEN 'teacher' THEN 3 
+                        ELSE 4 
+                    END,
+                    -- 教师按用户名智能排序：t+数字的按数字排序，其他按字母排序
+                    CASE 
+                        WHEN u.role = 'teacher' AND u.username LIKE 't%' AND u.username GLOB 't[0-9]*' THEN 
+                            CAST(SUBSTR(u.username, 2) AS INTEGER)
+                        WHEN u.role = 'teacher' THEN 999
+                        ELSE 0
+                    END,
+                    u.class_name,
+                    u.username
+            ''')
+        else:
+            # PostgreSQL 版本 - 使用正则表达式
+            cur.execute('''
+                SELECT u.id, u.username, u.class_name, u.role, u.created_at,
+                       COALESCE(sc.score_count, 0) as score_count
+                FROM users u
+                LEFT JOIN (
+                    SELECT user_id, COUNT(*) as score_count
+                    FROM scores
+                    GROUP BY user_id
+                ) sc ON u.id = sc.user_id
+                ORDER BY 
+                    CASE u.role 
+                        WHEN 'admin' THEN 1 
+                        WHEN 'student' THEN 2 
+                        WHEN 'teacher' THEN 3 
+                        ELSE 4 
+                    END,
+                    -- 教师按用户名智能排序：t+数字的按数字排序，其他按字母排序
+                    CASE 
+                        WHEN u.role = 'teacher' AND u.username LIKE 't%' AND u.username ~ '^t[0-9]+$' THEN 
+                            CAST(SUBSTRING(u.username FROM 2) AS INTEGER)
+                        WHEN u.role = 'teacher' THEN 999
+                        ELSE 0
+                    END,
+                    u.class_name,
+                    u.username
+            ''')
         users = cur.fetchall()
         return render_template('admin_users.html', users=users, user=current_user)
         
@@ -1428,38 +1461,51 @@ def admin():
         # 智能检测运行环境
         def detect_environment():
             """智能检测运行环境"""
-            # 1. 检查是否有明确的FLASK_ENV设置
-            flask_env = os.getenv("FLASK_ENV")
-            if flask_env:
-                return flask_env
             
-            # 2. 检查常见的生产环境标识 - 最高优先级
-            if os.getenv('RENDER') or os.getenv('HEROKU') or os.getenv('RAILWAY'):
+            # 1. 最高优先级：检查明确的FLASK_ENV设置
+            flask_env = os.getenv("FLASK_ENV", "").lower()
+            if flask_env == "production":
+                return "production"
+            elif flask_env == "development":
+                return "development"
+            
+            # 2. 检查常见的生产环境标识
+            if os.getenv('RENDER') or os.getenv('HEROKU') or os.getenv('RAILWAY') or os.getenv('VERCEL'):
                 return "production"
             
             # 3. 检查数据库URL - PostgreSQL通常意味着生产环境
             db_url = os.getenv("DATABASE_URL", "")
-            if db_url.startswith("postgresql://"):
+            if db_url.startswith("postgresql://") or db_url.startswith("postgres://"):
                 return "production"
             
             # 4. 检查是否有WSGI服务器标识
             server_software = os.getenv('SERVER_SOFTWARE', '')
-            if 'waitress' in server_software.lower() or 'gunicorn' in server_software.lower():
+            if any(server in server_software.lower() for server in ['waitress', 'gunicorn', 'uwsgi']):
                 return "production"
             
-            # 5. 检查Flask的debug模式 - 只在没有明确生产标识时才考虑
+            # 5. 检查端口 - 生产环境通常使用标准端口
+            port = os.getenv('PORT', '5000')
+            if port in ['80', '443', '8080'] or (port != '5000' and port.isdigit()):
+                return "production"
+            
+            # 6. 检查Flask的debug模式
             if app.debug:
                 return "development"
             
-            # 6. 检查是否在开发服务器中运行 - 只在本地环境时才考虑
-            if not os.getenv('RENDER') and not os.getenv('HEROKU') and not os.getenv('RAILWAY'):
+            # 7. 检查是否直接运行app.py（开发模式的典型特征）
+            try:
                 import __main__
                 main_file = getattr(__main__, '__file__', '')
-                if main_file and ('app.py' in main_file or 'run.py' in main_file):
+                if main_file and 'app.py' in main_file:
                     return "development"
+            except:
+                pass
             
-            # 7. 默认判断：有PostgreSQL连接 = 生产环境
-            return "production" if db_url.startswith("postgresql://") else "development"
+            # 8. 默认判断
+            if db_url.startswith("sqlite://"):
+                return "development"
+            else:
+                return "production"  # 当无法确定时，倾向于认为是生产环境
 
         detected_env = detect_environment()
         
@@ -1862,12 +1908,24 @@ if __name__ == "__main__":
         conn = get_conn()
         cur = conn.cursor()
         
-        # 检查关键表是否存在
-        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
-        users_exists = cur.fetchone()
+        # 检测数据库类型
+        db_url = os.getenv("DATABASE_URL", "sqlite:///classcomp.db")
+        is_sqlite = db_url.startswith("sqlite")
         
-        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='semester_config'")
-        semester_exists = cur.fetchone()
+        # 检查关键表是否存在
+        if is_sqlite:
+            cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
+            users_exists = cur.fetchone()
+            
+            cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='semester_config'")
+            semester_exists = cur.fetchone()
+        else:
+            # PostgreSQL 使用 information_schema
+            cur.execute("SELECT table_name FROM information_schema.tables WHERE table_name='users' AND table_schema='public'")
+            users_exists = cur.fetchone()
+            
+            cur.execute("SELECT table_name FROM information_schema.tables WHERE table_name='semester_config' AND table_schema='public'")
+            semester_exists = cur.fetchone()
         
         put_conn(conn)
         
