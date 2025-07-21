@@ -778,30 +778,40 @@ def my_scores():
                 # 全校数据教师看所有年级班级的本周期评分完成情况
                 # 修复：基于学期配置中的活跃班级，而不是用户表中的所有班级
                 cursor = conn.cursor()
-                cursor.execute('''
-                    SELECT DISTINCT 
+                placeholder = get_db_placeholder()
+                db_url = os.getenv("DATABASE_URL", "sqlite:///classcomp.db")
+                is_sqlite = db_url.startswith("sqlite")
+                
+                if is_sqlite:
+                    date_func = "DATE(s.created_at)"
+                else:
+                    date_func = "DATE(s.created_at AT TIME ZONE 'Asia/Shanghai')"
+
+                cursor.execute(f'''
+                    SELECT
                         sc.class_name,
+                        MIN(sc.grade_name) as grade_name,
                         CASE WHEN COUNT(s.id) > 0 THEN 1 ELSE 0 END as has_scored_this_period,
                         COUNT(s.id) as score_count_this_period,
                         MAX(s.created_at) as latest_score_time
                     FROM semester_classes sc
                     LEFT JOIN users u ON sc.class_name = u.class_name AND u.role = 'student'
                     LEFT JOIN scores s ON u.id = s.user_id
-                        AND DATE(s.created_at) >= ?
-                        AND DATE(s.created_at) <= ?
+                        AND {date_func} >= {placeholder}
+                        AND {date_func} <= {placeholder}
                     WHERE sc.is_active = 1 AND sc.semester_id = (SELECT id FROM semester_config WHERE is_active = 1)
-                    GROUP BY sc.class_name, sc.grade_name
-                    ORDER BY 
-                        CASE sc.grade_name 
-                            WHEN '中预' THEN 1 
-                            WHEN '初一' THEN 2 
-                            WHEN '初二' THEN 3 
-                            WHEN '高一' THEN 4 
-                            WHEN '高二' THEN 5 
-                            WHEN '高一VCE' THEN 6 
-                            WHEN '高二VCE' THEN 7 
-                            ELSE 8 
-                        END, 
+                    GROUP BY sc.class_name
+                    ORDER BY
+                        CASE MIN(sc.grade_name)
+                            WHEN '中预' THEN 1
+                            WHEN '初一' THEN 2
+                            WHEN '初二' THEN 3
+                            WHEN '高一' THEN 4
+                            WHEN '高二' THEN 5
+                            WHEN '高一VCE' THEN 6
+                            WHEN '高二VCE' THEN 7
+                            ELSE 8
+                        END,
                         sc.class_name
                 ''', (period_start.strftime('%Y-%m-%d'), period_end.strftime('%Y-%m-%d')))
                 class_status = cursor.fetchall()
@@ -840,33 +850,42 @@ def my_scores():
                 cursor = conn.cursor()
                 # 构建IN查询条件
                 placeholder = get_db_placeholder()
+                db_url = os.getenv("DATABASE_URL", "sqlite:///classcomp.db")
+                is_sqlite = db_url.startswith("sqlite")
+
+                if is_sqlite:
+                    date_func = "DATE(s.created_at)"
+                else:
+                    date_func = "DATE(s.created_at AT TIME ZONE 'Asia/Shanghai')"
+                
                 grade_placeholders = ','.join([placeholder for _ in teacher_grades])
                 cursor.execute(f'''
-                    SELECT DISTINCT 
+                    SELECT
                         sc.class_name,
+                        MIN(sc.grade_name) as grade_name,
                         CASE WHEN COUNT(s.id) > 0 THEN 1 ELSE 0 END as has_scored_this_period,
                         COUNT(s.id) as score_count_this_period,
                         MAX(s.created_at) as latest_score_time
                     FROM semester_classes sc
                     LEFT JOIN users u ON sc.class_name = u.class_name AND u.role = 'student'
                     LEFT JOIN scores s ON u.id = s.user_id
-                        AND DATE(s.created_at) >= ?
-                        AND DATE(s.created_at) <= ?
+                        AND {date_func} >= {placeholder}
+                        AND {date_func} <= {placeholder}
                     WHERE sc.is_active = 1
                         AND sc.semester_id = (SELECT id FROM semester_config WHERE is_active = 1)
                         AND sc.grade_name IN ({grade_placeholders})
-                    GROUP BY sc.class_name, sc.grade_name
-                    ORDER BY 
-                        CASE sc.grade_name 
-                            WHEN '中预' THEN 1 
-                            WHEN '初一' THEN 2 
-                            WHEN '初二' THEN 3 
-                            WHEN '高一' THEN 4 
-                            WHEN '高二' THEN 5 
-                            WHEN '高一VCE' THEN 6 
-                            WHEN '高二VCE' THEN 7 
-                            ELSE 8 
-                        END, 
+                    GROUP BY sc.class_name
+                    ORDER BY
+                        CASE MIN(sc.grade_name)
+                            WHEN '中预' THEN 1
+                            WHEN '初一' THEN 2
+                            WHEN '初二' THEN 3
+                            WHEN '高一' THEN 4
+                            WHEN '高二' THEN 5
+                            WHEN '高一VCE' THEN 6
+                            WHEN '高二VCE' THEN 7
+                            ELSE 8
+                        END,
                         sc.class_name
                 ''', [period_start.strftime('%Y-%m-%d'), period_end.strftime('%Y-%m-%d')] + teacher_grades)
                 class_status = cursor.fetchall()
@@ -1797,8 +1816,8 @@ def admin():
                             FROM semester_classes sc
                             LEFT JOIN users u ON sc.class_name = u.class_name AND u.role = 'student'
                             LEFT JOIN scores s ON u.id = s.user_id
-                                AND DATE(s.created_at) >= ?
-                                AND DATE(s.created_at) <= ?
+                                AND DATE(s.created_at) >= {placeholder}
+                                AND DATE(s.created_at) <= {placeholder}
                             WHERE sc.is_active = 1
                                 AND sc.semester_id = (SELECT id FROM semester_config WHERE is_active = 1)
                                 AND sc.grade_name IN ({grade_placeholders})
