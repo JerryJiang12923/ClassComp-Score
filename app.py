@@ -38,6 +38,11 @@ from models import User, Score
 from forms import LoginForm, RegistrationForm, ScoreForm
 from period_utils import get_current_semester_config, calculate_period_info
 
+def get_db_placeholder():
+    """获取数据库兼容的占位符"""
+    db_url = os.getenv("DATABASE_URL", "sqlite:///classcomp.db")
+    return "?" if db_url.startswith("sqlite") else "%s"
+
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key-change-this')
 CORS(app)
@@ -408,151 +413,172 @@ def admin_semester():
                             
                             try:
                                 # 生成 SQL 备份
-                                conn = get_conn()
-                                cur = conn.cursor()
-                                
+                                # 使用当前连接，不再获取新连接
                                 with open(backup_path, 'w', encoding='utf-8') as f:
                                     f.write("-- ClassComp Score 数据备份\n")
-                                    f.write(f"-- 备份时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
-                                    
+                                    f.write(f"-- 备份时间: {get_current_time().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+                                   
                                     # 备份用户表
                                     f.write("-- 用户数据\n")
                                     cur.execute("SELECT * FROM users ORDER BY id")
                                     users = cur.fetchall()
                                     for user in users:
-                                        f.write(f"INSERT INTO users (id, username, password_hash, role, class_name, created_at) VALUES ")
-                                        f.write(f"({user['id']}, '{user['username']}', '{user['password_hash']}', ")
-                                        f.write(f"'{user['role']}', '{user['class_name']}', '{user['created_at']}');\n")
-                                    
+                                        # 使用 %s 占位符和参数化查询来生成安全的SQL
+                                        f.write(cur.mogrify("INSERT INTO users (id, username, password_hash, role, class_name, created_at) VALUES (%s, %s, %s, %s, %s, %s);\n",
+                                                            (user['id'], user['username'], user['password_hash'], user['role'], user['class_name'], user['created_at'])).decode('utf-8'))
+                                   
                                     f.write("\n-- 评分数据\n")
                                     cur.execute("SELECT * FROM scores ORDER BY id")
                                     scores = cur.fetchall()
                                     for score in scores:
-                                        f.write(f"INSERT INTO scores (id, user_id, evaluator_name, evaluator_class, ")
-                                        f.write(f"target_grade, target_class, score1, score2, score3, total, note, created_at) VALUES ")
-                                        f.write(f"({score['id']}, {score['user_id']}, '{score['evaluator_name']}', ")
-                                        f.write(f"'{score['evaluator_class']}', '{score['target_grade']}', '{score['target_class']}', ")
-                                        f.write(f"{score['score1']}, {score['score2']}, {score['score3']}, {score['total']}, ")
-                                        f.write(f"'{score['note']}', '{score['created_at']}');\n")
-                                    
+                                        f.write(cur.mogrify("""
+                                            INSERT INTO scores (id, user_id, evaluator_name, evaluator_class, target_grade, target_class, score1, score2, score3, total, note, created_at)
+                                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
+                                        \n""", (score['id'], score['user_id'], score['evaluator_name'], score['evaluator_class'], score['target_grade'], score['target_class'],
+                                                score['score1'], score['score2'], score['score3'], score['total'], score['note'], score['created_at'])).decode('utf-8'))
+                                   
                                     # 备份学期配置
                                     f.write("\n-- 学期配置\n")
                                     cur.execute("SELECT * FROM semester_config ORDER BY id")
                                     semesters = cur.fetchall()
                                     for semester in semesters:
-                                        f.write(f"INSERT INTO semester_config (id, semester_name, start_date, end_date, ")
-                                        f.write(f"first_period_end_date, is_active, created_at, updated_at) VALUES ")
-                                        f.write(f"({semester['id']}, '{semester['semester_name']}', '{semester['start_date']}', ")
-                                        f.write(f"'{semester['end_date']}', '{semester['first_period_end_date']}', ")
-                                        f.write(f"{semester['is_active']}, '{semester['created_at']}', '{semester['updated_at']}');\n")
+                                        f.write(cur.mogrify("""
+                                            INSERT INTO semester_config (id, semester_name, start_date, end_date, first_period_end_date, is_active, created_at, updated_at)
+                                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s);
+                                        \n""", (semester['id'], semester['semester_name'], semester['start_date'], semester['end_date'], semester['first_period_end_date'],
+                                                semester['is_active'], semester['created_at'], semester['updated_at'])).decode('utf-8'))
                                 
-                                put_conn(conn)
+                                # 不在这里关闭连接，由外部管理
+                                # put_conn(conn)
                                 
                                 # 返回 SQL 文件下载
                                 return send_file(backup_path, as_attachment=True, download_name=backup_filename)
                                 
                             except Exception as e:
+                                # 如果备份失败，确保连接被归还
+                                put_conn(conn)
                                 return f"PostgreSQL 备份失败：{str(e)}", 500
                 except Exception as e:
                     return f"备份失败：{str(e)}", 500
-            
+           
             # 处理JSON请求
             elif request.is_json:
                 data = request.get_json()
                 action = data.get('action')
-                
+                placeholder = get_db_placeholder()
+               
                 if action == 'update_config':
                     # 更新学期基本配置
                     semester_name = data.get('semester_name')
                     start_date = data.get('start_date')
                     first_period_end_date = data.get('first_period_end_date')
-                    
+                   
                     if not all([semester_name, start_date, first_period_end_date]):
                         return jsonify(success=False, message='缺少必要信息')
-                    
+                   
                     # 查找活跃学期
-                    cur.execute('SELECT id FROM semester_config WHERE is_active = 1')
+                    cur.execute(f'SELECT id FROM semester_config WHERE is_active = {placeholder}', (True,))
                     semester = cur.fetchone()
-                    
+                   
                     if semester:
                         # 更新现有的活跃学期
-                        cur.execute('''
-                            UPDATE semester_config 
-                            SET semester_name = ?, start_date = ?, first_period_end_date = ?, updated_at = CURRENT_TIMESTAMP
-                            WHERE id = ?
+                        cur.execute(f'''
+                            UPDATE semester_config
+                            SET semester_name = {placeholder}, start_date = {placeholder}, first_period_end_date = {placeholder}, updated_at = CURRENT_TIMESTAMP
+                            WHERE id = {placeholder}
                         ''', (semester_name, start_date, first_period_end_date, semester['id']))
                         conn.commit()
                         return jsonify(success=True, message='学期配置更新成功')
                     else:
                         # 没有活跃学期，创建新的学期配置
-                        cur.execute('''
+                        cur.execute(f'''
                             INSERT INTO semester_config (semester_name, start_date, first_period_end_date, is_active)
-                            VALUES (?, ?, ?, 1)
-                        ''', (semester_name, start_date, first_period_end_date))
+                            VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder})
+                        ''', (semester_name, start_date, first_period_end_date, True))
                         conn.commit()
                         return jsonify(success=True, message='新学期配置创建成功')
-                
+               
                 elif action == 'update_classes':
                     # 更新班级配置 - 使用原子操作防止重复
                     classes = data.get('classes', [])
-                    
+                    db_url = os.getenv("DATABASE_URL", "sqlite:///classcomp.db")
+                    is_sqlite = db_url.startswith("sqlite")
+                   
                     # 使用事务确保原子性
-                    conn.execute('BEGIN IMMEDIATE')
+                    if is_sqlite:
+                        cur.execute('BEGIN IMMEDIATE')
+                    else:
+                        cur.execute('BEGIN')
                     try:
                         # 获取当前学期ID，如果没有则创建默认学期
-                        cur.execute('SELECT id FROM semester_config WHERE is_active = 1')
+                        cur.execute(f'SELECT id FROM semester_config WHERE is_active = {placeholder}', (True,))
                         semester = cur.fetchone()
-                        
+                       
                         if not semester:
                             # 没有活跃学期，先创建一个简单的默认学期配置
-                            current_date = datetime.now()
-                            
+                            current_date = get_current_time()
+                           
                             # 简单的默认：第一期结束日期设为今天+PERIOD_DAYS后的星期日
                             default_end = current_date + timedelta(days=PERIOD_CONSTANTS['DAYS_IN_PERIOD'])
-                            
+                           
                             # 找到该日期之后的第一个星期日
-                            days_until_sunday = (PERIOD_CONSTANTS['SUNDAY_WEEKDAY'] - default_end.weekday()) % 7
-                            if days_until_sunday == 0 and default_end.weekday() != PERIOD_CONSTANTS['SUNDAY_WEEKDAY']:
-                                days_until_sunday = 7
+                            days_until_sunday = (PERIOD_CONSTANTS['SUNDAY_WEEKDAY'] - default_end.weekday() + 7) % 7
                             first_period_end = default_end + timedelta(days=days_until_sunday)
-                            
+                           
                             semester_name = f'{current_date.year}年学期-默认配置'
                             start_date = current_date.strftime('%Y-%m-%d')
                             first_period_end_date = first_period_end.strftime('%Y-%m-%d')
-                            
-                            cur.execute('''
+                           
+                            cur.execute(f'''
                                 INSERT INTO semester_config (semester_name, start_date, first_period_end_date, is_active)
-                                VALUES (?, ?, ?, 1)
-                            ''', (semester_name, start_date, first_period_end_date))
-                            semester_id = cur.lastrowid
+                                VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder})
+                            ''', (semester_name, start_date, first_period_end_date, True))
+                            
+                            if is_sqlite:
+                                semester_id = cur.lastrowid
+                            else:
+                                # PostgreSQL需要明确返回ID
+                                cur.execute("SELECT lastval()")
+                                semester_id = cur.fetchone()[0]
                             print(f"创建默认学期: {semester_name}, 开始: {start_date}, 第一期结束: {first_period_end_date}")
                         else:
                             semester_id = semester['id']
-                        
+                       
                         # 先将所有班级设为不活跃
-                        cur.execute('UPDATE semester_classes SET is_active = 0 WHERE semester_id = ?', (semester_id,))
-                        
+                        cur.execute(f'UPDATE semester_classes SET is_active = {placeholder} WHERE semester_id = {placeholder}', (False, semester_id))
+                       
                         # 使用UPSERT模式更新班级配置
                         for class_info in classes:
                             grade_name = class_info.get('grade_name')
                             class_name = class_info.get('class_name')
-                            
+                           
                             if not grade_name or not class_name:
                                 continue
-                            
-                            # 使用INSERT OR REPLACE确保原子性和唯一性
-                            cur.execute('''
-                                INSERT OR REPLACE INTO semester_classes 
-                                (semester_id, grade_name, class_name, is_active, created_at, updated_at)
-                                SELECT ?, ?, ?, 1, 
-                                       COALESCE((SELECT created_at FROM semester_classes 
-                                               WHERE semester_id = ? AND class_name = ?), CURRENT_TIMESTAMP),
-                                       CURRENT_TIMESTAMP
-                            ''', (semester_id, grade_name, class_name, semester_id, class_name))
-                        
+                           
+                            if is_sqlite:
+                                # SQLite 使用 INSERT OR REPLACE
+                                cur.execute(f'''
+                                    INSERT OR REPLACE INTO semester_classes
+                                    (semester_id, grade_name, class_name, is_active, created_at, updated_at)
+                                    SELECT {placeholder}, {placeholder}, {placeholder}, {placeholder},
+                                           COALESCE((SELECT created_at FROM semester_classes
+                                                   WHERE semester_id = {placeholder} AND class_name = {placeholder}), CURRENT_TIMESTAMP),
+                                           CURRENT_TIMESTAMP
+                                ''', (semester_id, grade_name, class_name, True, semester_id, class_name))
+                            else:
+                                # PostgreSQL 使用 ON CONFLICT DO UPDATE
+                                cur.execute(f'''
+                                    INSERT INTO semester_classes (semester_id, grade_name, class_name, is_active)
+                                    VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder})
+                                    ON CONFLICT (semester_id, class_name) DO UPDATE SET
+                                        grade_name = EXCLUDED.grade_name,
+                                        is_active = EXCLUDED.is_active,
+                                        updated_at = CURRENT_TIMESTAMP
+                                ''', (semester_id, grade_name, class_name, True))
+                       
                         conn.commit()
                         return jsonify(success=True, message=f'班级配置更新成功，共{len(classes)}个班级')
-                        
+                       
                     except Exception as e:
                         conn.rollback()
                         return jsonify(success=False, message=f'班级配置更新失败: {str(e)}')
@@ -944,11 +970,12 @@ def export_excel():
                     return f"无法确定教师所属年级，当前班级：{current_user.class_name}", 400
                 
                 # 高一高二教师需要包含对应的VCE班级数据
+                placeholder = get_db_placeholder()
                 if teacher_grade in ['高一', '高二']:
-                    teacher_grade_filter = " AND (target_grade LIKE ? OR target_grade LIKE ?)"
+                    teacher_grade_filter = f" AND (target_grade LIKE {placeholder} OR target_grade LIKE {placeholder})"
                     teacher_grade_params = [f'%{teacher_grade}%', f'%{teacher_grade}VCE%']
                 else:
-                    teacher_grade_filter = " AND target_grade LIKE ?"
+                    teacher_grade_filter = f" AND target_grade LIKE {placeholder}"
                     teacher_grade_params = [f'%{teacher_grade}%']
         
         # 构建SQL查询 - 根据是否导出全部数据来决定时间条件
@@ -965,15 +992,17 @@ def export_excel():
             query_params = [month]
         
         # 处理教师权限过滤器：确保SQL语法正确
-        if teacher_grade_filter:
+        final_where_condition = time_condition
+        final_params = query_params.copy()
+        
+        if teacher_grade_filter and teacher_grade_params:
             if time_condition:
                 # 已有WHERE条件，直接拼接AND
                 final_where_condition = time_condition + teacher_grade_filter
             else:
-                # 没有WHERE条件，将AND替换为WHERE
+                # 没有WHERE条件，添加WHERE
                 final_where_condition = "WHERE" + teacher_grade_filter[4:]  # 去掉" AND"，替换为"WHERE"
-        else:
-            final_where_condition = time_condition
+            final_params.extend(teacher_grade_params)
         
         if is_sqlite:
             sql = f"""
@@ -1415,15 +1444,16 @@ def admin():
         db_url = os.getenv("DATABASE_URL", "sqlite:///classcomp.db")
         is_sqlite = db_url.startswith("sqlite")
         
-        # 今日统计
+        # 今日统计 - 使用数据库兼容的时区处理
         if is_sqlite:
             today_condition = "DATE(created_at) = DATE('now')"
             month_condition = "strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now')"
             date_format = "strftime('%Y-%m-%d', created_at)"
         else:
-            today_condition = "DATE(created_at) = CURRENT_DATE"
-            month_condition = "DATE_TRUNC('month', created_at) = DATE_TRUNC('month', CURRENT_DATE)"
-            date_format = "to_char(created_at, 'YYYY-MM-DD')"
+            # PostgreSQL - 使用 AT TIME ZONE 确保时区一致
+            today_condition = "DATE(created_at AT TIME ZONE 'Asia/Shanghai') = CURRENT_DATE"
+            month_condition = "DATE_TRUNC('month', created_at AT TIME ZONE 'Asia/Shanghai') = DATE_TRUNC('month', CURRENT_DATE)"
+            date_format = "to_char(created_at AT TIME ZONE 'Asia/Shanghai', 'YYYY-MM-DD')"
         
         # 教师只能查看本年级数据，但全校数据教师可以查看所有数据
         if current_user.is_teacher():
@@ -1452,8 +1482,10 @@ def admin():
                 if not teacher_grade:
                     return f"无法确定教师所属年级，当前班级：{current_user.class_name}", 400
                 
-                # 添加年级过滤条件
-                grade_filter = f"AND target_grade LIKE '%{teacher_grade}%'"
+                # 添加年级过滤条件 - 使用数据库兼容的占位符
+                placeholder = get_db_placeholder()
+                grade_filter = f" AND target_grade LIKE {placeholder}"
+                grade_params = [f'%{teacher_grade}%']
         else:
             # 管理员可以看全部
             grade_filter = ""
@@ -1469,8 +1501,9 @@ def admin():
                 # 全校数据教师可以查看所有数据
                 cur.execute("SELECT COUNT(*) as total FROM scores")
             else:
-                # 普通教师只能查看本年级数据 - 使用参数化查询防止SQL注入
-                cur.execute("SELECT COUNT(*) as total FROM scores WHERE target_grade LIKE ?", (f'%{teacher_grade}%',))
+                # 普通教师只能查看本年级数据 - 使用数据库兼容的占位符
+                placeholder = get_db_placeholder()
+                cur.execute(f"SELECT COUNT(*) as total FROM scores WHERE target_grade LIKE {placeholder}", (f'%{teacher_grade}%',))
         else:
             cur.execute("SELECT COUNT(*) as total FROM scores")
         total_scores = cur.fetchone()['total']
@@ -1479,7 +1512,8 @@ def admin():
             if current_user.class_name and ('全校' in current_user.class_name or 'ALL' in current_user.class_name.upper()):
                 cur.execute("SELECT AVG(total) as avg FROM scores")
             else:
-                cur.execute("SELECT AVG(total) as avg FROM scores WHERE target_grade LIKE ?", (f'%{teacher_grade}%',))
+                placeholder = get_db_placeholder()
+                cur.execute(f"SELECT AVG(total) as avg FROM scores WHERE target_grade LIKE {placeholder}", (f'%{teacher_grade}%',))
         else:
             cur.execute("SELECT AVG(total) as avg FROM scores")
         avg_score = cur.fetchone()['avg'] or 0
@@ -1490,7 +1524,8 @@ def admin():
                 cur.execute(f"SELECT COUNT(*) as today FROM scores WHERE {today_condition}")
             else:
                 if teacher_grade:
-                    cur.execute(f"SELECT COUNT(*) as today FROM scores WHERE {today_condition} AND target_grade LIKE ?", (f'%{teacher_grade}%',))
+                    placeholder = get_db_placeholder()
+                    cur.execute(f"SELECT COUNT(*) as today FROM scores WHERE {today_condition} AND target_grade LIKE {placeholder}", (f'%{teacher_grade}%',))
                 else:
                     cur.execute(f"SELECT COUNT(*) as today FROM scores WHERE {today_condition}")
         else:
@@ -1511,11 +1546,12 @@ def admin():
             else:
                 # 普通教师只看本年级
                 if teacher_grade:
-                    cur.execute('''
+                    placeholder = get_db_placeholder()
+                    cur.execute(f'''
                         SELECT s.*, u.username, u.class_name as evaluator_class_name
                         FROM scores s 
                         JOIN users u ON s.user_id = u.id 
-                        WHERE s.target_grade LIKE ?
+                        WHERE s.target_grade LIKE {placeholder}
                         ORDER BY s.created_at DESC 
                         LIMIT 100
                     ''', (f'%{teacher_grade}%',))
@@ -1775,7 +1811,8 @@ def admin():
                     except Exception as semester_error:
                         print(f"学期配置查询失败，回退到简单统计: {semester_error}")
                         # 回退到简单的年级统计
-                        cur.execute('''
+                        placeholder = get_db_placeholder()
+                        cur.execute(f'''
                             SELECT 
                                 CASE 
                                     WHEN target_grade LIKE '%VCE%' THEN 'VCE'
@@ -1784,7 +1821,7 @@ def admin():
                                 COUNT(*) as count, 
                                 AVG(total) as avg_score
                             FROM scores 
-                            WHERE target_grade LIKE ?
+                            WHERE target_grade LIKE {placeholder}
                             GROUP BY 
                                 CASE 
                                     WHEN target_grade LIKE '%VCE%' THEN 'VCE'
@@ -1849,11 +1886,12 @@ def admin():
                 else:
                     # 普通教师只看本年级趋势
                     if teacher_grade:
+                        placeholder = get_db_placeholder()
                         if is_sqlite:
                             cur.execute(f'''
                                 SELECT {date_format} as date, COUNT(*) as count
                                 FROM scores 
-                                WHERE created_at >= datetime('now', '-7 days') AND target_grade LIKE ?
+                                WHERE created_at >= datetime('now', '-7 days') AND target_grade LIKE {placeholder}
                                 GROUP BY {date_format}
                                 ORDER BY date
                             ''', (f'%{teacher_grade}%',))
@@ -1861,7 +1899,7 @@ def admin():
                             cur.execute(f'''
                                 SELECT {date_format} as date, COUNT(*) as count
                                 FROM scores 
-                                WHERE created_at >= CURRENT_DATE - INTERVAL '7 days' AND target_grade LIKE ?
+                                WHERE created_at >= CURRENT_DATE - INTERVAL '7 days' AND target_grade LIKE {placeholder}
                                 GROUP BY {date_format}
                                 ORDER BY date
                             ''', (f'%{teacher_grade}%',))
