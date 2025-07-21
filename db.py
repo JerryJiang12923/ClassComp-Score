@@ -45,7 +45,10 @@ else:
         
         def get_conn():
             """从池里取一个连接（记得用完再放回）"""
-            return conn_pool.getconn()
+            conn = conn_pool.getconn()
+            with conn.cursor() as cur:
+                cur.execute("SET timezone = 'Asia/Shanghai'")
+            return conn
         
         def put_conn(conn):
             conn_pool.putconn(conn)

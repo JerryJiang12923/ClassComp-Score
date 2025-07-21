@@ -148,7 +148,7 @@
                                     <div class="col-6">
                                         <div class="mb-2">
                                             {% if class_info.latest_score_time %}
-                                                <strong class="fs-6 text-success">{{ class_info.latest_score_time[:10] }}</strong>
+                                                <strong class="fs-6 text-success">{{ class_info.latest_score_time | format_datetime('%Y-%m-%d') }}</strong>
                                             {% else %}
                                                 <strong class="fs-6 text-muted">未评分</strong>
                                             {% endif %}

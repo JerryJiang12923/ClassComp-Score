@@ -1094,34 +1094,13 @@ def export_excel():
         data_type = "全部数据" if all_data else f"{month}月数据"
         print(f"📊 导出前{data_type}总数: {len(df)}")
         
-        # 增强时间处理逻辑
-        def parse_datetime_robust(dt_str):
-            """强力解析各种时间格式"""
-            if pd.isna(dt_str):
-                return None
-            
-            dt_str = str(dt_str).strip()
-            
-            # 处理带时区的格式
-            if '+' in dt_str:
-                dt_str = dt_str.split('+')[0]
-            if 'T' in dt_str:
-                dt_str = dt_str.replace('T', ' ')
-            
-            # 尝试解析
-            try:
-                return pd.to_datetime(dt_str)
-            except Exception as e:
-                print(f"Error: {e}")
-                try:
-                    # 如果失败，尝试只取日期部分
-                    date_part = dt_str.split()[0]
-                    return pd.to_datetime(date_part)
-                except Exception as parse_error:
-                    print(f"⚠️ 无法解析时间: {dt_str}, 错误: {parse_error}")
-                    return None
-        
-        df["created_at"] = df["created_at"].apply(parse_datetime_robust)
+        # 统一处理时区
+        def convert_to_shanghai_time(series):
+            """将Series转换为带时区的上海时间"""
+            s = pd.to_datetime(series, errors='coerce', utc=True)
+            return s.dt.tz_convert('Asia/Shanghai')
+
+        df["created_at"] = convert_to_shanghai_time(df["created_at"])
         df = df.dropna(subset=['created_at'])
         
         print(f"📊 时间解析后数据: {len(df)}")
@@ -1141,10 +1120,7 @@ def export_excel():
             put_conn(conn)
             return "时间数据解析失败，请检查数据格式", 500
             
-        # 处理时区转换 - 简化处理，避免数据 loss
-        df["created_at"] = pd.to_datetime(df["created_at"], errors='coerce')
-        # 确保所有时间都被正确处理，无论原始格式如何
-        df["created_at"] = df["created_at"].dt.tz_localize(None)
+        # 时区已在 convert_to_shanghai_time 函数中统一处理，此处无需重复转换
         
         # 根据导出类型生成文件名
         if all_data:
@@ -1195,7 +1171,7 @@ def export_excel():
                 
                 # 1. 创建汇总表 - 每个周期单独一个sheet
                 for period in sorted(month_df['period_number'].unique()):
-                    period_df = month_df[month_df['period_number'] == period]
+                    period_df = month_df[month_df['period_number'] == period].copy()
                     period_end = period_df['period_end_date'].iloc[0]
                     
                     # 计算每个班级在该周期内的平均分
@@ -1249,7 +1225,7 @@ def export_excel():
                 
                 # 2. 为每个周期和年级创建评分矩阵
                 for period in sorted(month_df['period_number'].unique()):
-                    period_df = month_df[month_df['period_number'] == period]
+                    period_df = month_df[month_df['period_number'] == period].copy()
                     
                     # 创建年级分组：将VCE年级合并
                     def get_matrix_grade(grade):
@@ -1270,17 +1246,26 @@ def export_excel():
                     ordered_grades = [grade for grade in matrix_grade_order if grade in available_grades]
                     
                     for matrix_grade in ordered_grades:
-                        grade_df = period_df_copy[period_df_copy["matrix_grade"] == matrix_grade]
+                        grade_df = period_df_copy[period_df_copy["matrix_grade"] == matrix_grade].copy()
                         if grade_df.empty:
                             continue
                             
                         try:
                             # 创建透视表: 被查班级 vs 评分者班级
+                            # 修复：分开定义行和列的类别，避免不相关的班级出现在矩阵中
+                            target_classes = sorted(grade_df['target_class'].unique())
+                            evaluator_classes = sorted(grade_df['evaluator_class'].unique())
+                            
+                            grade_df['target_class'] = pd.Categorical(grade_df['target_class'], categories=target_classes, ordered=True)
+                            grade_df['evaluator_class'] = pd.Categorical(grade_df['evaluator_class'], categories=evaluator_classes, ordered=True)
+
                             pivot = grade_df.pivot_table(
                                 index="target_class",      # 被查班级作为行
                                 columns="evaluator_class", # 评分者班级作为列
                                 values="total",
-                                aggfunc="mean"  # 周期内平均分（如果有多次评分）
+                                aggfunc="mean",  # 周期内平均分（如果有多次评分）
+                                dropna=False,
+                                observed=False
                             ).round(2)
                             
                             if not pivot.empty:
@@ -1363,8 +1348,9 @@ def export_excel():
                         'note', 'created_at', 'overwritten_at', 'overwritten_by_score_id'
                     ])
                     
-                    # 处理历史记录的时间
-                    history_df["created_at"] = history_df["created_at"].apply(parse_datetime_robust)
+                    # 统一处理时区
+                    history_df["created_at"] = convert_to_shanghai_time(history_df["created_at"])
+                    history_df["overwritten_at"] = convert_to_shanghai_time(history_df["overwritten_at"])
                     history_df = history_df.dropna(subset=['created_at'])
                     
                     if all_data:
@@ -1429,6 +1415,11 @@ def export_excel():
                 
                 # 按评分时间顺序排序（解决排序混乱问题）
                 detail_df = detail_df.sort_values(['评分时间', '记录类型'], ascending=[True, False])  # 先按时间，再按类型（当前记录在前）
+                
+                # 写入Excel前，移除datetime的timezone信息
+                if '评分时间' in detail_df.columns:
+                    detail_df['评分时间'] = detail_df['评分时间'].dt.tz_localize(None)
+                
                 detail_df.to_excel(writer, sheet_name="提交明细", index=False)
                 print(f"✅ 创建提交明细表: {len(detail_df)}条记录（包含历史记录）")
                 
@@ -1807,17 +1798,25 @@ def admin():
                         
                         # 尝试基于学期配置中的活跃班级查询
                         placeholder = get_db_placeholder()
+                        db_url = os.getenv("DATABASE_URL", "sqlite:///classcomp.db")
+                        is_sqlite = db_url.startswith("sqlite")
+
+                        if is_sqlite:
+                            date_func = "DATE(s.created_at)"
+                        else:
+                            date_func = "DATE(s.created_at AT TIME ZONE 'Asia/Shanghai')"
+                        
                         grade_placeholders = ','.join([placeholder for _ in teacher_grades])
                         cur.execute(f'''
-                            SELECT 
+                            SELECT
                                 sc.class_name as display_grade,
-                                CASE WHEN COUNT(s.id) > 0 THEN 1 ELSE 0 END as count, 
+                                CASE WHEN COUNT(s.id) > 0 THEN 1 ELSE 0 END as count,
                                 COUNT(s.id) as score_count
                             FROM semester_classes sc
                             LEFT JOIN users u ON sc.class_name = u.class_name AND u.role = 'student'
                             LEFT JOIN scores s ON u.id = s.user_id
-                                AND DATE(s.created_at) >= {placeholder}
-                                AND DATE(s.created_at) <= {placeholder}
+                                AND {date_func} >= {placeholder}
+                                AND {date_func} <= {placeholder}
                             WHERE sc.is_active = 1
                                 AND sc.semester_id = (SELECT id FROM semester_config WHERE is_active = 1)
                                 AND sc.grade_name IN ({grade_placeholders})

@@ -17,12 +17,8 @@ SUNDAY_WEEKDAY = 6  # Python中星期日是6
 DEFAULT_TIMEZONE = 'Asia/Shanghai'
 
 def get_local_timezone():
-    """获取本地时区，优先使用环境变量"""
-    tz_name = os.getenv('TZ', DEFAULT_TIMEZONE)
-    try:
-        return pytz.timezone(tz_name)
-    except:
-        return pytz.timezone(DEFAULT_TIMEZONE)  # 回退到默认时区
+    """强制使用上海时区"""
+    return pytz.timezone(DEFAULT_TIMEZONE)
 
 def get_current_time():
     """获取当前本地时间（时区感知）"""
@@ -92,15 +88,15 @@ def calculate_period_info(target_date=None, semester_config=None, conn=None):
         target_date = current_time.date()
     elif isinstance(target_date, str):
         # 如果传入的是字符串，转换为date对象
-        target_date = datetime.strptime(target_date, '%Y-%m-%d').date()
+        target_date = get_local_timezone().localize(datetime.strptime(target_date, '%Y-%m-%d')).date()
     
     def _get_year_start_from_config(config):
         """Helper to get start date from semester config."""
         end_date_raw = config['first_period_end_date']
         if isinstance(end_date_raw, str):
-            first_period_end = datetime.strptime(end_date_raw, '%Y-%m-%d').date()
+            first_period_end = get_local_timezone().localize(datetime.strptime(end_date_raw, '%Y-%m-%d')).date()
         else:
-            first_period_end = end_date_raw  # Assume it's a date object
+            first_period_end = end_date_raw
         return first_period_end - timedelta(days=PERIOD_BUFFER_DAYS)
 
     if semester_config is None:
