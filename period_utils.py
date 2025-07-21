@@ -42,12 +42,13 @@ def get_current_semester_config(conn=None):
     
     try:
         cur = conn.cursor()
-        cur.execute('SELECT * FROM semester_config WHERE is_active = 1 LIMIT 1')
+        db_url = os.getenv("DATABASE_URL", "sqlite:///classcomp.db")
+        placeholder = "?" if db_url.startswith("sqlite") else "%s"
+        cur.execute(f'SELECT * FROM semester_config WHERE is_active = {placeholder} LIMIT 1', (1,))
         semester = cur.fetchone()
         
         if semester:
             # 获取班级配置 - 使用数据库兼容的占位符
-            import os
             db_url = os.getenv("DATABASE_URL", "sqlite:///classcomp.db")
             placeholder = "?" if db_url.startswith("sqlite") else "%s"
             
@@ -80,7 +81,7 @@ def get_current_semester_config(conn=None):
             from db import put_conn
             put_conn(conn)
 
-def calculate_period_info(target_date=None, semester_config=None):
+def calculate_period_info(target_date=None, semester_config=None, conn=None):
     """
     根据学期配置计算评分周期信息
     使用第一周期结束日期作为基准进行计算
@@ -93,20 +94,24 @@ def calculate_period_info(target_date=None, semester_config=None):
         # 如果传入的是字符串，转换为date对象
         target_date = datetime.strptime(target_date, '%Y-%m-%d').date()
     
+    def _get_year_start_from_config(config):
+        """Helper to get start date from semester config."""
+        end_date_raw = config['first_period_end_date']
+        if isinstance(end_date_raw, str):
+            first_period_end = datetime.strptime(end_date_raw, '%Y-%m-%d').date()
+        else:
+            first_period_end = end_date_raw  # Assume it's a date object
+        return first_period_end - timedelta(days=PERIOD_BUFFER_DAYS)
+
     if semester_config is None:
-        config_data = get_current_semester_config()
+        config_data = get_current_semester_config(conn=conn)
         if not config_data:
             # 如果没有学期配置，使用默认逻辑
             year_start = datetime(target_date.year, 1, 1).date()
         else:
-            semester = config_data['semester']
-            first_period_end = datetime.strptime(semester['first_period_end_date'], '%Y-%m-%d').date()
-            # 从第一周期结束日期推算开始日期（往前13天）
-            year_start = first_period_end - timedelta(days=PERIOD_BUFFER_DAYS)
+            year_start = _get_year_start_from_config(config_data['semester'])
     else:
-        first_period_end = datetime.strptime(semester_config['first_period_end_date'], '%Y-%m-%d').date()
-        # 从第一周期结束日期推算开始日期（往前13天）
-        year_start = first_period_end - timedelta(days=PERIOD_BUFFER_DAYS)
+        year_start = _get_year_start_from_config(semester_config)
     
     # 找到该日期所在的周日（本周或下周）
     days_until_sunday = (6 - target_date.weekday()) % 7
@@ -136,5 +141,5 @@ def calculate_period_info(target_date=None, semester_config=None):
 
 def get_biweekly_period_end(date, conn=None):
     """计算日期所属的两周周期结束日（兼容旧接口）"""
-    period_info = calculate_period_info(target_date=date)
+    period_info = calculate_period_info(target_date=date, conn=conn)
     return period_info['period_end']

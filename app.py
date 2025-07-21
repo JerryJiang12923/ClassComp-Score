@@ -194,41 +194,44 @@ def admin_users():
                 if user_id == current_user.id:
                     return jsonify(success=False, message='不能删除自己的账户')
                 
-                cur.execute("DELETE FROM users WHERE id = ?", (user_id,))
+                placeholder = get_db_placeholder()
+                cur.execute(f"DELETE FROM users WHERE id = {placeholder}", (user_id,))
                 if cur.rowcount > 0:
                     conn.commit()
                     return jsonify(success=True, message='用户删除成功')
                 else:
                     return jsonify(success=False, message='用户不存在')
-            
+
             elif action == 'bulk_delete':
                 user_ids = data.get('user_ids', [])
                 if current_user.id in user_ids:
                     return jsonify(success=False, message='不能删除自己的账户')
-                
-                placeholders = ','.join(['?' for _ in user_ids])
+
+                placeholder = get_db_placeholder()
+                placeholders = ','.join([placeholder for _ in user_ids])
                 cur.execute(f"DELETE FROM users WHERE id IN ({placeholders})", user_ids)
                 deleted_count = cur.rowcount
                 conn.commit()
                 return jsonify(success=True, message=f'成功删除{deleted_count}个用户')
-            
+
             elif action == 'create':
                 username = data.get('username')
                 password = data.get('password')
                 class_name = data.get('class_name')
                 role = data.get('role', 'student')
-                
+
                 if not all([username, password, class_name]):
                     return jsonify(success=False, message='缺少必要信息')
-                
-                cur.execute("SELECT id FROM users WHERE username = ?", (username,))
+
+                placeholder = get_db_placeholder()
+                cur.execute(f"SELECT id FROM users WHERE username = {placeholder}", (username,))
                 if cur.fetchone():
                     return jsonify(success=False, message='用户名已存在')
-                
+
                 password_hash = generate_password_hash(password)
-                cur.execute("""
+                cur.execute(f"""
                     INSERT INTO users (username, password_hash, role, class_name)
-                    VALUES (?, ?, ?, ?)
+                    VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder})
                 """, (username, password_hash, role, class_name))
                 conn.commit()
                 return jsonify(success=True, message=f'用户 {username} 创建成功')
@@ -241,14 +244,15 @@ def admin_users():
             role = request.form.get('role', 'student')
             
             if username and password and class_name:
-                cur.execute("SELECT id FROM users WHERE username = ?", (username,))
+                placeholder = get_db_placeholder()
+                cur.execute(f"SELECT id FROM users WHERE username = {placeholder}", (username,))
                 if cur.fetchone():
                     flash('用户名已存在', 'error')
                 else:
                     password_hash = generate_password_hash(password)
-                    cur.execute("""
+                    cur.execute(f"""
                         INSERT INTO users (username, password_hash, role, class_name)
-                        VALUES (?, ?, ?, ?)
+                        VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder})
                     """, (username, password_hash, role, class_name))
                     conn.commit()
                     flash(f'用户 {username} 创建成功', 'success')
@@ -391,7 +395,6 @@ def admin_semester():
                             os.makedirs(EXPORT_FOLDER, exist_ok=True)
                             
                             # 复制数据库文件（仅限 SQLite）
-                            import re
                             db_filename = re.search(r'sqlite:///(.+)', db_url).group(1)
                             if not os.path.isabs(db_filename):
                                 db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), db_filename)
@@ -455,8 +458,7 @@ def admin_semester():
                                 return send_file(backup_path, as_attachment=True, download_name=backup_filename)
                                 
                             except Exception as e:
-                                # 如果备份失败，确保连接被归还
-                                put_conn(conn)
+                                # 错误由外部的 finally 块处理连接归还
                                 return f"PostgreSQL 备份失败：{str(e)}", 500
                 except Exception as e:
                     return f"备份失败：{str(e)}", 500
@@ -477,7 +479,7 @@ def admin_semester():
                         return jsonify(success=False, message='缺少必要信息')
                    
                     # 查找活跃学期
-                    cur.execute(f'SELECT id FROM semester_config WHERE is_active = {placeholder}', (True,))
+                    cur.execute(f'SELECT id FROM semester_config WHERE is_active = {placeholder}', (1,))
                     semester = cur.fetchone()
                    
                     if semester:
@@ -494,7 +496,7 @@ def admin_semester():
                         cur.execute(f'''
                             INSERT INTO semester_config (semester_name, start_date, first_period_end_date, is_active)
                             VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder})
-                        ''', (semester_name, start_date, first_period_end_date, True))
+                        ''', (semester_name, start_date, first_period_end_date, 1))
                         conn.commit()
                         return jsonify(success=True, message='新学期配置创建成功')
                
@@ -511,7 +513,7 @@ def admin_semester():
                         cur.execute('BEGIN')
                     try:
                         # 获取当前学期ID，如果没有则创建默认学期
-                        cur.execute(f'SELECT id FROM semester_config WHERE is_active = {placeholder}', (True,))
+                        cur.execute(f'SELECT id FROM semester_config WHERE is_active = {placeholder}', (1,))
                         semester = cur.fetchone()
                        
                         if not semester:
@@ -532,7 +534,7 @@ def admin_semester():
                             cur.execute(f'''
                                 INSERT INTO semester_config (semester_name, start_date, first_period_end_date, is_active)
                                 VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder})
-                            ''', (semester_name, start_date, first_period_end_date, True))
+                            ''', (semester_name, start_date, first_period_end_date, 1))
                             
                             if is_sqlite:
                                 semester_id = cur.lastrowid
@@ -545,7 +547,7 @@ def admin_semester():
                             semester_id = semester['id']
                        
                         # 先将所有班级设为不活跃
-                        cur.execute(f'UPDATE semester_classes SET is_active = {placeholder} WHERE semester_id = {placeholder}', (False, semester_id))
+                        cur.execute(f'UPDATE semester_classes SET is_active = {placeholder} WHERE semester_id = {placeholder}', (0, semester_id))
                        
                         # 使用UPSERT模式更新班级配置
                         for class_info in classes:
@@ -564,7 +566,7 @@ def admin_semester():
                                            COALESCE((SELECT created_at FROM semester_classes
                                                    WHERE semester_id = {placeholder} AND class_name = {placeholder}), CURRENT_TIMESTAMP),
                                            CURRENT_TIMESTAMP
-                                ''', (semester_id, grade_name, class_name, True, semester_id, class_name))
+                                ''', (semester_id, grade_name, class_name, 1, semester_id, class_name))
                             else:
                                 # PostgreSQL 使用 ON CONFLICT DO UPDATE
                                 cur.execute(f'''
@@ -574,7 +576,7 @@ def admin_semester():
                                         grade_name = EXCLUDED.grade_name,
                                         is_active = EXCLUDED.is_active,
                                         updated_at = CURRENT_TIMESTAMP
-                                ''', (semester_id, grade_name, class_name, True))
+                                ''', (semester_id, grade_name, class_name, 1))
                        
                         conn.commit()
                         return jsonify(success=True, message=f'班级配置更新成功，共{len(classes)}个班级')
@@ -606,20 +608,17 @@ def admin_semester():
         db_url = os.getenv("DATABASE_URL", "sqlite:///classcomp.db")
         placeholder = "?" if db_url.startswith("sqlite") else "%s"
         
-        cur.execute('''
-            SELECT * FROM semester_config WHERE is_active = 1
-        ''')
+        cur.execute(f'''
+            SELECT * FROM semester_config WHERE is_active = {placeholder}
+        ''', (1,))
         semester = cur.fetchone()
         
         if semester:
             # 获取班级配置，按正确的年级顺序排列
-            db_url = os.getenv("DATABASE_URL", "sqlite:///classcomp.db")
-            placeholder = "?" if db_url.startswith("sqlite") else "%s"
-            
             cur.execute(f'''
                 SELECT grade_name, class_name
-                FROM semester_classes 
-                WHERE semester_id = {placeholder} AND is_active = 1
+                FROM semester_classes
+                WHERE semester_id = {placeholder} AND is_active = {placeholder}
                 ORDER BY 
                     CASE grade_name 
                         WHEN '中预' THEN 1 
@@ -632,7 +631,7 @@ def admin_semester():
                         ELSE 8 
                     END, 
                     class_name
-            ''', (semester['id'],))
+            ''', (semester['id'], 1))
             classes = cur.fetchall()
         else:
             classes = []
@@ -787,8 +786,8 @@ def my_scores():
                         MAX(s.created_at) as latest_score_time
                     FROM semester_classes sc
                     LEFT JOIN users u ON sc.class_name = u.class_name AND u.role = 'student'
-                    LEFT JOIN scores s ON u.id = s.user_id 
-                        AND DATE(s.created_at) >= ? 
+                    LEFT JOIN scores s ON u.id = s.user_id
+                        AND DATE(s.created_at) >= ?
                         AND DATE(s.created_at) <= ?
                     WHERE sc.is_active = 1 AND sc.semester_id = (SELECT id FROM semester_config WHERE is_active = 1)
                     GROUP BY sc.class_name, sc.grade_name
@@ -840,7 +839,8 @@ def my_scores():
                 
                 cursor = conn.cursor()
                 # 构建IN查询条件
-                grade_placeholders = ','.join(['?' for _ in teacher_grades])
+                placeholder = get_db_placeholder()
+                grade_placeholders = ','.join([placeholder for _ in teacher_grades])
                 cursor.execute(f'''
                     SELECT DISTINCT 
                         sc.class_name,
@@ -849,10 +849,10 @@ def my_scores():
                         MAX(s.created_at) as latest_score_time
                     FROM semester_classes sc
                     LEFT JOIN users u ON sc.class_name = u.class_name AND u.role = 'student'
-                    LEFT JOIN scores s ON u.id = s.user_id 
-                        AND DATE(s.created_at) >= ? 
+                    LEFT JOIN scores s ON u.id = s.user_id
+                        AND DATE(s.created_at) >= ?
                         AND DATE(s.created_at) <= ?
-                    WHERE sc.is_active = 1 
+                    WHERE sc.is_active = 1
                         AND sc.semester_id = (SELECT id FROM semester_config WHERE is_active = 1)
                         AND sc.grade_name IN ({grade_placeholders})
                     GROUP BY sc.class_name, sc.grade_name
@@ -934,12 +934,18 @@ def export_excel():
     if not all_data and not month:
         return "请提供 month=YYYY-MM 查询参数或 all_data=true 参数", 400
     
+    conn = None  # 初始化conn
     try:
+        print("开始导出Excel...")
         conn = get_conn()
+        print("数据库连接成功")
         cur = conn.cursor()
         
-        import os
         db_url = os.getenv("DATABASE_URL", "sqlite:///classcomp.db")
+        is_sqlite = db_url.startswith("sqlite")
+        placeholder = "?" if is_sqlite else "%s"
+        
+        # 教师权限控制 - 普通教师只能导出本年级数据，全校数据教师可以导出所有数据
         is_sqlite = db_url.startswith("sqlite")
         placeholder = "?" if is_sqlite else "%s"
         
@@ -1138,19 +1144,19 @@ def export_excel():
                 df['date_only'] = df['created_at'].dt.date
                 
                 # 计算每个日期所属的两周周期
-                def get_biweekly_period(date):
+                def get_biweekly_period(date, conn=None):
                     # 使用学期配置计算周期
                     config_data = get_current_semester_config(conn)
                     if config_data:
-                        period_info = calculate_period_info(target_date=date, semester_config=config_data['semester'])
+                        period_info = calculate_period_info(target_date=date, semester_config=config_data['semester'], conn=conn)
                         return period_info['period_number'], period_info['period_end']
                     else:
                         # 回退到默认逻辑
-                        period_info = calculate_period_info(target_date=date)
+                        period_info = calculate_period_info(target_date=date, conn=conn)
                         return period_info['period_number'], period_info['period_end']
                 
-                df['period_number'] = df['date_only'].apply(lambda x: get_biweekly_period(x)[0])
-                df['period_end_date'] = df['date_only'].apply(lambda x: get_biweekly_period(x)[1])
+                df['period_number'] = df['date_only'].apply(lambda x: get_biweekly_period(x, conn=conn)[0])
+                df['period_end_date'] = df['date_only'].apply(lambda x: get_biweekly_period(x, conn=conn)[1])
                 df['period_month'] = df['period_end_date'].apply(lambda x: x.strftime('%Y-%m'))
                 
                 if all_data:
@@ -1412,20 +1418,25 @@ def export_excel():
             raise Exception(f"Excel导出失败: {str(e)}")
         finally:
             # 确保数据库连接被关闭
-            try:
-                put_conn(conn)
-            except Exception as e:
-                print(f"Error: {e}")
-                pass
+            if conn:
+                try:
+                    put_conn(conn)
+                except Exception as e:
+                    print(f"Error putting conn back to pool: {e}")
+                    pass
         
         return send_file(filepath, as_attachment=True, download_name=filename)
     
     except Exception as e:
-        try:
-            put_conn(conn)
-        except Exception as conn_error:
-            print(f"数据库连接关闭错误: {conn_error}")
-            pass
+        import traceback
+        print(f"导出Excel时发生严重错误: {e}")
+        print(traceback.format_exc())
+        if conn:
+            try:
+                put_conn(conn)
+            except Exception as conn_error:
+                print(f"数据库连接关闭错误: {conn_error}")
+                pass
         return f"导出失败：{str(e)}", 500
 
 @app.route('/admin')
@@ -1440,7 +1451,6 @@ def admin():
         cur = conn.cursor()
         
         # 获取统计数据
-        import os
         db_url = os.getenv("DATABASE_URL", "sqlite:///classcomp.db")
         is_sqlite = db_url.startswith("sqlite")
         
@@ -1574,8 +1584,6 @@ def admin():
         recent_scores = cur.fetchall()
         
         # 环境信息
-        import os
-        import platform
         import sys
         import psutil
         
@@ -1779,7 +1787,8 @@ def admin():
                             teacher_grades = [teacher_grade]
                         
                         # 尝试基于学期配置中的活跃班级查询
-                        grade_placeholders = ','.join(['?' for _ in teacher_grades])
+                        placeholder = get_db_placeholder()
+                        grade_placeholders = ','.join([placeholder for _ in teacher_grades])
                         cur.execute(f'''
                             SELECT 
                                 sc.class_name as display_grade,
@@ -1787,10 +1796,10 @@ def admin():
                                 COUNT(s.id) as score_count
                             FROM semester_classes sc
                             LEFT JOIN users u ON sc.class_name = u.class_name AND u.role = 'student'
-                            LEFT JOIN scores s ON u.id = s.user_id 
-                                AND DATE(s.created_at) >= ? 
+                            LEFT JOIN scores s ON u.id = s.user_id
+                                AND DATE(s.created_at) >= ?
                                 AND DATE(s.created_at) <= ?
-                            WHERE sc.is_active = 1 
+                            WHERE sc.is_active = 1
                                 AND sc.semester_id = (SELECT id FROM semester_config WHERE is_active = 1)
                                 AND sc.grade_name IN ({grade_placeholders})
                             GROUP BY sc.class_name, sc.grade_name

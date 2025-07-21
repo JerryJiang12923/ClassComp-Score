@@ -28,7 +28,6 @@ class User(UserMixin):
         """根据ID获取用户信息"""
         cur = conn.cursor()
         # 检测数据库类型
-        import os
         db_url = os.getenv("DATABASE_URL", "sqlite:///classcomp.db")
         placeholder = "?" if db_url.startswith("sqlite") else "%s"
         
@@ -46,7 +45,6 @@ class User(UserMixin):
     def get_user_by_username(username, conn):
         """根据用户名获取用户信息"""
         cur = conn.cursor()
-        import os
         db_url = os.getenv("DATABASE_URL", "sqlite:///classcomp.db")
         placeholder = "?" if db_url.startswith("sqlite") else "%s"
         
@@ -97,7 +95,6 @@ class Score:
         """创建新的评分记录（支持软删除和覆盖）"""
         cur = conn.cursor()
         
-        import os
         from datetime import datetime, timedelta
         db_url = os.getenv("DATABASE_URL", "sqlite:///classcomp.db")
         is_sqlite = db_url.startswith("sqlite")
@@ -190,24 +187,25 @@ class Score:
             # 插入新记录
             if is_sqlite:
                 cur.execute(f"""
-                    INSERT INTO scores (user_id, evaluator_name, evaluator_class, 
-                                      target_grade, target_class, score1, score2, score3, 
+                    INSERT INTO scores (user_id, evaluator_name, evaluator_class,
+                                      target_grade, target_class, score1, score2, score3,
                                       total, note, created_at)
-                    VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, 
+                    VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder},
                             {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder})
-                """, (user_id, evaluator_name, evaluator_class, target_grade, 
+                """, (user_id, evaluator_name, evaluator_class, target_grade,
                       target_class, score1, score2, score3, total, note, created_at))
                 score_id = cur.lastrowid
             else:
+                # For PostgreSQL, do not insert 'total' as it's a generated column
                 cur.execute(f"""
-                    INSERT INTO scores (user_id, evaluator_name, evaluator_class, 
-                                      target_grade, target_class, score1, score2, score3, 
-                                      total, note, created_at)
-                    VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, 
-                            {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder})
+                    INSERT INTO scores (user_id, evaluator_name, evaluator_class,
+                                      target_grade, target_class, score1, score2, score3,
+                                      note, created_at)
+                    VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder},
+                            {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder})
                     RETURNING id
-                """, (user_id, evaluator_name, evaluator_class, target_grade, 
-                      target_class, score1, score2, score3, total, note, created_at))
+                """, (user_id, evaluator_name, evaluator_class, target_grade,
+                      target_class, score1, score2, score3, note, created_at))
                 score_id = cur.fetchone()['id']
             
             # 更新历史记录中的overwritten_by_score_id
@@ -228,7 +226,6 @@ class Score:
     def get_user_scores(user_id, conn, limit=50):
         """获取用户的评分历史"""
         cur = conn.cursor()
-        import os
         db_url = os.getenv("DATABASE_URL", "sqlite:///classcomp.db")
         placeholder = "?" if db_url.startswith("sqlite") else "%s"
         
@@ -244,7 +241,6 @@ class Score:
     def get_scores_by_date_range(start_date, end_date, conn):
         """按日期范围获取评分"""
         cur = conn.cursor()
-        import os
         db_url = os.getenv("DATABASE_URL", "sqlite:///classcomp.db")
         placeholder = "?" if db_url.startswith("sqlite") else "%s"
         
