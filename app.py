@@ -693,7 +693,7 @@ def submit_scores():
                         continue
                     
                     # 清理备注
-                    note = InputValidator.sanitize_text(score_data.get("note", ""), max_length=200)
+                    note = InputValidator.sanitize_text(score_data.get("note", ""), max_length=50)
                     
                     score_id, error, overwrite_count = Score.create_score(
                         user_id=current_user.id,
@@ -1561,7 +1561,7 @@ def admin():
                     FROM scores s 
                     JOIN users u ON s.user_id = u.id 
                     ORDER BY s.created_at DESC 
-                    LIMIT 100
+                    LIMIT 300
                 ''')
             else:
                 # 普通教师只看本年级
@@ -1573,7 +1573,7 @@ def admin():
                         JOIN users u ON s.user_id = u.id 
                         WHERE s.target_grade LIKE {placeholder}
                         ORDER BY s.created_at DESC 
-                        LIMIT 100
+                        LIMIT 300
                     ''', (f'%{teacher_grade}%',))
                 else:
                     cur.execute('''
@@ -1581,7 +1581,7 @@ def admin():
                         FROM scores s 
                         JOIN users u ON s.user_id = u.id 
                         ORDER BY s.created_at DESC 
-                        LIMIT 100
+                        LIMIT 300
                     ''')
         else:
             cur.execute('''
@@ -1589,7 +1589,7 @@ def admin():
                 FROM scores s 
                 JOIN users u ON s.user_id = u.id 
                 ORDER BY s.created_at DESC 
-                LIMIT 100
+                LIMIT 300
             ''')
         recent_scores = cur.fetchall()
         

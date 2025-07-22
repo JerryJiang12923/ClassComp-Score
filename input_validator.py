@@ -56,7 +56,7 @@ class InputValidator:
         return role in USER_ROLES.values()
     
     @staticmethod
-    def sanitize_text(text, max_length=500):
+    def sanitize_text(text, max_length=50):
         """清理文本输入，防止XSS"""
         if not text:
             return ""

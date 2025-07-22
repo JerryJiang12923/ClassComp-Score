@@ -6,43 +6,25 @@
     <title>用户管理 - 信息委员评分系统</title>
     <link href="{{ url_for('static', filename='bootstrap.min.css') }}" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <style>
-        .user-card {
-            transition: all 0.3s ease;
-        }
-        .user-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-        }
-        .role-admin { background: linear-gradient(135deg, #ff6b6b, #ee5a24); }
-        .role-teacher { background: linear-gradient(135deg, #ffa726, #ff9800); }
-        .role-student { background: linear-gradient(135deg, #42a5f5, #1976d2); }
-        .stats-card {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-        }
-        .action-btn {
-            transition: all 0.2s ease;
-        }
-        .action-btn:hover {
-            transform: scale(1.1);
-        }
-    </style>
+    <link href="{{ url_for('static', filename='custom.css') }}" rel="stylesheet">
 </head>
 <body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+    <nav class="navbar navbar-expand-lg navbar-light navbar-custom">
         <div class="container">
             <a class="navbar-brand" href="{{ url_for('index') }}">
                 <i class="fas fa-clipboard-check me-2"></i>
-                信息委员评分系统 - 管理后台
+                信息委员评分系统
             </a>
             <div class="navbar-nav ms-auto">
-                <span class="navbar-text me-3">欢迎, {{ user.username }} (管理员)</span>
-                <a class="nav-link" href="{{ url_for('admin') }}">
-                    <i class="fas fa-chart-bar me-1"></i>管理面板
+                <span class="navbar-text me-3">管理员: {{ user.username }}</span>
+                <a class="nav-link" href="{{ url_for('index') }}">
+                    <i class="fas fa-home me-1"></i>返回首页
                 </a>
-                <a class="nav-link" href="{{ url_for('my_scores') }}">
-                    <i class="fas fa-history me-1"></i>评分历史
+                <a class="nav-link" href="{{ url_for('admin') }}">
+                    <i class="fas fa-chart-bar me-1"></i>数据面板
+                </a>
+                <a class="nav-link" href="{{ url_for('admin_semester') }}">
+                    <i class="fas fa-cog me-1"></i>学期设置
                 </a>
                 <a class="nav-link" href="{{ url_for('logout') }}">
                     <i class="fas fa-sign-out-alt me-1"></i>退出
@@ -62,7 +44,7 @@
             <div class="col-md-3">
                 <div class="card stats-card">
                     <div class="card-body text-center">
-                        <i class="fas fa-users fa-2x mb-2"></i>
+                        <i class="fas fa-users fa-lg mb-2"></i>
                         <h5 class="card-title">总用户数</h5>
                         <p class="card-text h4">{{ users|length }}</p>
                     </div>
@@ -71,7 +53,7 @@
             <div class="col-md-3">
                 <div class="card stats-card">
                     <div class="card-body text-center">
-                        <i class="fas fa-user-graduate fa-2x mb-2"></i>
+                        <i class="fas fa-user-graduate fa-lg mb-2"></i>
                         <h5 class="card-title">学生用户</h5>
                         <p class="card-text h4">{{ users|selectattr('role', 'equalto', 'student')|list|length }}</p>
                     </div>
@@ -80,7 +62,7 @@
             <div class="col-md-3">
                 <div class="card stats-card">
                     <div class="card-body text-center">
-                        <i class="fas fa-chalkboard-teacher fa-2x mb-2"></i>
+                        <i class="fas fa-chalkboard-teacher fa-lg mb-2"></i>
                         <h5 class="card-title">教师用户</h5>
                         <p class="card-text h4">{{ users|selectattr('role', 'equalto', 'teacher')|list|length }}</p>
                     </div>
@@ -89,7 +71,7 @@
             <div class="col-md-3">
                 <div class="card stats-card">
                     <div class="card-body text-center">
-                        <i class="fas fa-user-shield fa-2x mb-2"></i>
+                        <i class="fas fa-user-shield fa-lg mb-2"></i>
                         <h5 class="card-title">管理员</h5>
                         <p class="card-text h4">{{ users|selectattr('role', 'equalto', 'admin')|list|length }}</p>
                     </div>
@@ -98,8 +80,8 @@
         </div>
 
         <!-- 创建用户表单 -->
-        <div class="card mb-4">
-            <div class="card-header bg-primary text-white">
+        <div class="card card-custom mb-4">
+            <div class="card-header card-header-custom">
                 <h5 class="mb-0">
                     <i class="fas fa-user-plus me-2"></i>
                     创建新用户
@@ -133,7 +115,7 @@
                         </div>
                         <div class="col-md-1">
                             <label class="form-label">操作</label>
-                            <button type="submit" class="btn btn-success w-100">
+                            <button type="submit" class="btn btn-primary-custom w-100">
                                 <i class="fas fa-plus"></i>
                             </button>
                         </div>
@@ -143,8 +125,8 @@
         </div>
 
         <!-- 批量操作 -->
-        <div class="card mb-4">
-            <div class="card-header bg-warning text-dark">
+        <div class="card card-custom mb-4">
+            <div class="card-header card-header-custom">
                 <h5 class="mb-0">
                     <i class="fas fa-tools me-2"></i>
                     批量操作
@@ -153,18 +135,18 @@
             <div class="card-body">
                 <div class="row">
                     <div class="col-md-6">
-                        <button type="button" class="btn btn-danger" id="bulkDeleteBtn" disabled>
+                        <button type="button" class="btn btn-custom danger" id="bulkDeleteBtn" disabled>
                             <i class="fas fa-trash me-2"></i>批量删除
                         </button>
-                        <button type="button" class="btn btn-secondary" id="selectAllBtn">
+                        <button type="button" class="btn btn-custom" id="selectAllBtn">
                             <i class="fas fa-check-square me-2"></i>全选
                         </button>
-                        <button type="button" class="btn btn-light" id="clearSelectionBtn" style="display:none;">
+                        <button type="button" class="btn btn-custom" id="clearSelectionBtn" style="display:none;">
                             <i class="fas fa-times me-2"></i>取消全选
                         </button>
                     </div>
                     <div class="col-md-6 text-end">
-                        <button type="button" class="btn btn-info" id="exportUsersBtn">
+                        <button type="button" class="btn btn-custom" id="exportUsersBtn">
                             <i class="fas fa-download me-2"></i>导出用户列表
                         </button>
                     </div>
@@ -173,8 +155,8 @@
         </div>
 
         <!-- 用户列表 -->
-        <div class="card">
-            <div class="card-header bg-light">
+        <div class="card card-custom">
+            <div class="card-header card-header-custom">
                 <h5 class="mb-0">
                     <i class="fas fa-list me-2"></i>
                     用户列表
@@ -200,34 +182,34 @@
                         <tbody>
                             {% for user in users %}
                             <tr data-user-id="{{ user.id }}" data-username="{{ user.username }}">
-                                <td>
+                                <td class="align-middle">
                                     {% if user.id != current_user.id %}
                                     <input type="checkbox" class="user-checkbox form-check-input" value="{{ user.id }}">
                                     {% endif %}
                                 </td>
-                                <td>
+                                <td class="align-middle">
                                     <strong>{{ user.username }}</strong>
                                     {% if user.id == current_user.id %}
                                     <span class="badge bg-secondary ms-1">当前用户</span>
                                     {% endif %}
                                 </td>
-                                <td>{{ user.class_name }}</td>
-                                <td>
+                                <td class="align-middle">{{ user.class_name }}</td>
+                                <td class="align-middle">
                                     {% if user.role == 'admin' %}
-                                        <span class="badge bg-danger">管理员</span>
+                                        <span class="badge-custom badge-admin badge-sm">管理员</span>
                                     {% elif user.role == 'teacher' %}
-                                        <span class="badge bg-warning">老师</span>
+                                        <span class="badge-custom badge-teacher badge-sm">老师</span>
                                     {% else %}
-                                        <span class="badge bg-primary">学生</span>
+                                        <span class="badge-custom badge-student badge-sm">学生</span>
                                     {% endif %}
                                 </td>
                                 <td>{{ user.created_at | format_datetime if user.created_at else '未知' }}</td>
-                                <td>
-                                    <span class="badge bg-info">{{ user.score_count }}</span>
+                                <td class="align-middle">
+                                    <span class="badge-custom badge-info badge-sm">{{ user.score_count }}</span>
                                 </td>
-                                <td>
+                                <td class="align-middle">
                                     {% if user.id != current_user.id %}
-                                    <button class="btn btn-sm btn-danger action-btn delete-user" 
+                                    <button class="btn btn-sm btn-custom danger action-btn delete-user"
                                             data-user-id="{{ user.id }}" 
                                             data-username="{{ user.username }}">
                                         <i class="fas fa-trash"></i>
@@ -264,8 +246,8 @@
                     <p class="text-danger">此操作不可撤销，该用户的所有数据将被删除。</p>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                    <button type="button" class="btn btn-danger" id="confirmDelete">删除</button>
+                    <button type="button" class="btn btn-custom" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-custom danger" id="confirmDelete">删除</button>
                 </div>
             </div>
         </div>

@@ -6,18 +6,11 @@
     <title>学期设置 - 信息委员评分系统</title>
     <link href="{{ url_for('static', filename='bootstrap.min.css') }}" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='custom.css') }}" rel="stylesheet">
     <style>
-        .setting-card {
-            transition: all 0.3s ease;
-            border-left: 4px solid #007bff;
-        }
-        .setting-card:hover {
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-            transform: translateY(-2px);
-        }
         .danger-zone {
-            border-left-color: #dc3545;
-            background-color: #fff5f5;
+            border-left: 4px solid #e74a3b !important;
+            background-color: #fdf5f5;
         }
         .class-chip {
             display: inline-block;
@@ -43,8 +36,8 @@
             margin-bottom: 1rem;
         }
         .class-chip .remove-btn {
-            background: #dc3545;
-            color: white;
+            background: #f8d7da;
+            color: #721c24;
             border: none;
             border-radius: 50%;
             width: 20px;
@@ -63,7 +56,7 @@
     </style>
 </head>
 <body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+    <nav class="navbar navbar-expand-lg navbar-light navbar-custom">
         <div class="container">
             <a class="navbar-brand" href="{{ url_for('index') }}">
                 <i class="fas fa-clipboard-check me-2"></i>
@@ -71,8 +64,11 @@
             </a>
             <div class="navbar-nav ms-auto">
                 <span class="navbar-text me-3">管理员: {{ user.username }}</span>
+                <a class="nav-link" href="{{ url_for('index') }}">
+                    <i class="fas fa-home me-1"></i>返回首页
+                </a>
                 <a class="nav-link" href="{{ url_for('admin') }}">
-                    <i class="fas fa-chart-line me-1"></i>数据面板
+                    <i class="fas fa-chart-bar me-1"></i>数据面板
                 </a>
                 <a class="nav-link" href="{{ url_for('admin_users') }}">
                     <i class="fas fa-users me-1"></i>用户管理
@@ -92,8 +88,8 @@
         <!-- 学期基本信息 -->
         <div class="row mb-4">
             <div class="col-12">
-                <div class="card setting-card">
-                    <div class="card-header">
+                <div class="card card-custom">
+                    <div class="card-header card-header-custom">
                         <h5 class="mb-0">
                             <i class="fas fa-calendar-alt me-2"></i>学期基本信息
                         </h5>
@@ -103,25 +99,25 @@
                             <div class="row">
                                 <div class="col-md-4">
                                     <label class="form-label">学期名称</label>
-                                    <input type="text" class="form-control" id="semesterName" 
+                                    <input type="text" class="form-control" id="semesterName"
                                            value="{{ semester.semester_name if semester else '2025年第一学期' }}" required>
                                 </div>
                                 <div class="col-md-4">
                                     <label class="form-label">学期开始日期</label>
-                                    <input type="date" class="form-control" id="startDate" 
+                                    <input type="date" class="form-control" id="startDate"
                                            value="{{ semester.start_date if semester else '2025-07-01' }}" required>
                                 </div>
                                 <div class="col-md-4">
                                     <label class="form-label">第一周期结束日期</label>
-                                    <input type="date" class="form-control" id="firstPeriodEnd" 
+                                    <input type="date" class="form-control" id="firstPeriodEnd"
                                            value="{{ semester.first_period_end_date if semester else '2025-07-27' }}" required>
                                     <div class="form-text">设置第一个评分周期的结束日期（通常是周日）</div>
                                 </div>
-                            </div>
-                            <div class="mt-3">
-                                <button type="submit" class="btn btn-primary">
-                                    <i class="fas fa-save me-1"></i>保存学期配置
-                                </button>
+                                <div class="col-md-12 mt-2">
+                                    <button type="submit" class="btn btn-primary-custom">
+                                        <i class="fas fa-save me-1"></i>保存学期配置
+                                    </button>
+                                </div>
                             </div>
                         </form>
                     </div>
@@ -132,12 +128,12 @@
         <!-- 班级设置 -->
         <div class="row mb-4">
             <div class="col-12">
-                <div class="card setting-card">
-                    <div class="card-header d-flex justify-content-between align-items-center">
+                <div class="card card-custom">
+                    <div class="card-header card-header-custom d-flex justify-content-between align-items-center">
                         <h5 class="mb-0">
                             <i class="fas fa-users me-2"></i>班级设置
                         </h5>
-                        <button class="btn btn-success btn-sm" onclick="showAddClassForm()">
+                        <button class="btn btn-primary-custom btn-sm" onclick="showAddClassForm()">
                             <i class="fas fa-plus me-1"></i>添加班级
                         </button>
                     </div>
@@ -162,10 +158,10 @@
                                            onkeypress="if(event.key==='Enter') addNewClass()">
                                 </div>
                                 <div class="col-md-4">
-                                    <button class="btn btn-primary me-2" onclick="addNewClass()">
+                                    <button class="btn btn-primary-custom me-2" onclick="addNewClass()">
                                         <i class="fas fa-plus"></i> 添加
                                     </button>
-                                    <button class="btn btn-secondary" onclick="hideAddClassForm()">
+                                    <button class="btn btn-custom" onclick="hideAddClassForm()">
                                         <i class="fas fa-times"></i> 取消
                                     </button>
                                 </div>
@@ -198,10 +194,10 @@
                         </div>
 
                         <div class="mt-3">
-                            <button class="btn btn-primary" onclick="saveClassConfig()">
+                            <button class="btn btn-primary-custom" onclick="saveClassConfig()">
                                 <i class="fas fa-save me-1"></i>保存班级配置
                             </button>
-                            <button class="btn btn-info" onclick="loadDefaultClasses()">
+                            <button class="btn btn-custom" onclick="loadDefaultClasses()">
                                 <i class="fas fa-download me-1"></i>载入默认班级
                             </button>
                         </div>
@@ -213,23 +209,23 @@
         <!-- 数据管理 -->
         <div class="row">
             <div class="col-md-6 mb-3">
-                <div class="card setting-card">
-                    <div class="card-header">
+                <div class="card card-custom">
+                    <div class="card-header card-header-custom">
                         <h5 class="mb-0">
                             <i class="fas fa-database me-2"></i>数据备份
                         </h5>
                     </div>
                     <div class="card-body">
                         <p class="card-text">导出当前学期的完整数据作为备份，包括所有评分记录和用户信息。</p>
-                        <button class="btn btn-success" onclick="exportBackup()">
+                        <button class="btn btn-custom" onclick="exportBackup()">
                             <i class="fas fa-download me-1"></i>导出数据备份
                         </button>
                     </div>
                 </div>
             </div>
             <div class="col-md-6 mb-3">
-                <div class="card setting-card danger-zone">
-                    <div class="card-header">
+                <div class="card card-custom danger-zone">
+                    <div class="card-header card-header-custom">
                         <h5 class="mb-0 text-danger">
                             <i class="fas fa-exclamation-triangle me-2"></i>危险操作
                         </h5>
@@ -238,7 +234,7 @@
                         <p class="card-text text-danger">
                             <strong>警告：</strong>重置数据库将删除所有评分记录，此操作不可恢复！
                         </p>
-                        <button class="btn btn-danger" onclick="showResetConfirm()">
+                        <button class="btn btn-custom danger" onclick="showResetConfirm()">
                             <i class="fas fa-trash me-1"></i>重置数据库
                         </button>
                     </div>

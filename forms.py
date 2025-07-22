@@ -106,8 +106,8 @@ class ScoreForm(FlaskForm):
         DataRequired(message='请输入分数'),
         NumberRange(min=0, max=4, message='分数必须在0-4之间')
     ])
-    
-    note = TextAreaField('备注', validators=[Length(max=200, message='备注不能超过200个字符')])
+
+    note = TextAreaField('备注', validators=[Length(max=50, message='备注不能超过50个字符')])
 
 class ChangePasswordForm(FlaskForm):
     current_password = PasswordField('当前密码', validators=[

@@ -3,15 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>提交成功</title>
+    <title>提交成功 - 信息委员评分系统</title>
     <link href="{{ url_for('static', filename='bootstrap.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='custom.css') }}" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+        .status-card {
+            width: 100%;
+            max-width: 450px;
+        }
+    </style>
 </head>
 <body>
-    <div class="container">
-        <h1 class="text-center mt-5">评分提交成功！</h1>
-        <p class="text-center">感谢您提交评分。您可以继续进行其他操作。</p>
-        <div class="text-center">
-            <a href="/" class="btn btn-primary">返回首页</a>
+    <div class="card card-custom status-card text-center">
+        <div class="card-body p-5">
+            <i class="fas fa-check-circle fa-4x text-success mb-4"></i>
+            <h2 class="mb-3">评分提交成功！</h2>
+            <p class="text-muted mb-4">如有评分错误，您可以返回首页重新提交。</p>
+            <div class="d-grid gap-2 d-sm-flex justify-content-sm-center">
+                <a href="{{ url_for('index') }}" class="btn btn-primary-custom">返回首页</a>
+                <a href="{{ url_for('my_scores') }}" class="btn btn-custom">查看评分历史</a>
+            </div>
         </div>
     </div>
 </body>

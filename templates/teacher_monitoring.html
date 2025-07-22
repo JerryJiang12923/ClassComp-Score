@@ -6,45 +6,10 @@
     <title>{% if is_school_wide %}全校班级评分监测{% else %}{{ teacher_grade }}年级班级评分监测{% endif %} - 信息委员评分系统</title>
     <link href="{{ url_for('static', filename='bootstrap.min.css') }}" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <style>
-        .status-badge {
-            font-size: 0.9em;
-            padding: 0.4em 0.8em;
-        }
-        .status-active {
-            background-color: #28a745;
-        }
-        .status-inactive {
-            background-color: #dc3545;
-        }
-        .status-warning {
-            background-color: #ffc107;
-            color: #212529;
-        }
-        .class-card {
-            transition: all 0.3s ease;
-            border-left: 4px solid #007bff;
-        }
-        .class-card:hover {
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-            transform: translateY(-2px);
-        }
-        .class-card.inactive {
-            border-left-color: #dc3545;
-            background-color: #fff5f5;
-        }
-        .class-card.warning {
-            border-left-color: #ffc107;
-            background-color: #fffbf0;
-        }
-        .class-card.active {
-            border-left-color: #28a745;
-            background-color: #f8fff8;
-        }
-    </style>
+    <link href="{{ url_for('static', filename='custom.css') }}" rel="stylesheet">
 </head>
 <body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+    <nav class="navbar navbar-expand-lg navbar-light navbar-custom">
         <div class="container">
             <a class="navbar-brand" href="{{ url_for('index') }}">
                 <i class="fas fa-clipboard-check me-2"></i>
@@ -88,26 +53,35 @@
                     {% set pending_classes = total_classes - completed_classes %}
                     
                     <div class="col-md-4">
-                        <div class="card bg-primary text-white">
-                            <div class="card-body text-center">
-                                <h3 class="card-title">{{ total_classes }}</h3>
-                                <p class="card-text">总班级数</p>
+                        <div class="stats-card">
+                            <div class="d-flex align-items-center">
+                                <div class="me-3"><i class="fas fa-users fa-2x"></i></div>
+                                <div>
+                                    <h4>{{ total_classes }}</h4>
+                                    <p class="mb-0">总班级数</p>
+                                </div>
                             </div>
                         </div>
                     </div>
                     <div class="col-md-4">
-                        <div class="card bg-success text-white">
-                            <div class="card-body text-center">
-                                <h3 class="card-title">{{ completed_classes }}</h3>
-                                <p class="card-text">已完成评分</p>
+                        <div class="stats-card">
+                            <div class="d-flex align-items-center">
+                                <div class="me-3"><i class="fas fa-check-circle fa-2x" style="color: #28a745;"></i></div>
+                                <div>
+                                    <h4>{{ completed_classes }}</h4>
+                                    <p class="mb-0">已完成评分</p>
+                                </div>
                             </div>
                         </div>
                     </div>
                     <div class="col-md-4">
-                        <div class="card bg-danger text-white">
-                            <div class="card-body text-center">
-                                <h3 class="card-title">{{ pending_classes }}</h3>
-                                <p class="card-text">待完成评分</p>
+                        <div class="stats-card">
+                            <div class="d-flex align-items-center">
+                                <div class="me-3"><i class="fas fa-times-circle fa-2x" style="color: #e74a3b;"></i></div>
+                                <div>
+                                    <h4>{{ pending_classes }}</h4>
+                                    <p class="mb-0">待完成评分</p>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -118,21 +92,21 @@
                     {% for class_info in class_status %}
                     {% set has_completed = class_info.has_scored_this_period == 1 %}
                     {% set score_count = class_info.score_count_this_period or 0 %}
-                    {% set card_class = 'active' if has_completed else 'inactive' %}
+                    {% set card_class = 'status-active' if has_completed else 'status-inactive' %}
                     
                     <div class="col-lg-6 col-xl-4 mb-3">
-                        <div class="card class-card {{ card_class }}">
+                        <div class="card card-custom {{ card_class }}">
                             <div class="card-body">
                                 <div class="d-flex justify-content-between align-items-start mb-2">
                                     <h5 class="card-title mb-0">
                                         <i class="fas fa-users me-2"></i>{{ class_info.class_name }}
                                     </h5>
                                     {% if has_completed %}
-                                        <span class="badge status-badge status-active">
+                                        <span class="badge-custom badge-status-active">
                                             <i class="fas fa-check me-1"></i>已完成
                                         </span>
                                     {% else %}
-                                        <span class="badge status-badge status-inactive">
+                                        <span class="badge-custom badge-status-inactive">
                                             <i class="fas fa-times me-1"></i>待完成
                                         </span>
                                     {% endif %}

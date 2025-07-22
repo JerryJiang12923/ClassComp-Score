@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}信息委员评分系统{% endblock %}</title>
+    <link href="{{ url_for('static', filename='bootstrap.min.css') }}" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='custom.css') }}" rel="stylesheet">
+    {% block head %}{% endblock %}
+</head>
+<body class="pangu">
+    <!-- 导航栏 -->
+    <nav class="navbar navbar-expand-lg navbar-light navbar-custom">
+        <div class="container">
+            <a class="navbar-brand" href="{{ url_for('index') }}">
+                <i class="fas fa-clipboard-check me-2"></i>
+                信息委员评分系统
+            </a>
+            <div class="navbar-nav ms-auto">
+                {% if current_user.is_authenticated %}
+                    <span class="navbar-text me-3">
+                        {% if current_user.is_admin() %}
+                            管理员: {{ current_user.username }}
+                        {% elif current_user.is_teacher() %}
+                            教师: {{ current_user.username }}
+                        {% else %}
+                            欢迎, {{ current_user.username }} ({{ current_user.class_name }})
+                        {% endif %}
+                    </span>
+                    <a class="nav-link" href="{{ url_for('my_scores') }}">
+                        <i class="fas fa-history me-1"></i>我的评分
+                    </a>
+                    {% if current_user.is_admin() %}
+                    <a class="nav-link" href="{{ url_for('admin') }}">
+                        <i class="fas fa-cog me-1"></i>管理面板
+                    </a>
+                    {% elif current_user.is_teacher() %}
+                    <a class="nav-link" href="{{ url_for('admin') }}">
+                        <i class="fas fa-chart-line me-1"></i>数据查看
+                    </a>
+                    {% endif %}
+                    <a class="nav-link" href="{{ url_for('logout') }}">
+                        <i class="fas fa-sign-out-alt me-1"></i>退出
+                    </a>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
+
+    <main class="py-4">
+        {% block content %}{% endblock %}
+    </main>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Pangu.js for spacing -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pangu/4.0.7/pangu.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            pangu.autoSpacingPage();
+        });
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

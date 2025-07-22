@@ -6,72 +6,31 @@
     <title>登录 - 信息委员评分系统</title>
     <link href="{{ url_for('static', filename='bootstrap.min.css') }}" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='custom.css') }}" rel="stylesheet">
     <style>
         body {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
+            min-height: 100vh;
         }
-        .login-container {
-            background: white;
-            border-radius: 15px;
-            box-shadow: 0 15px 35px rgba(0,0,0,0.1);
-            overflow: hidden;
+        .login-card {
             width: 100%;
             max-width: 400px;
-        }
-        .login-header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 30px;
-            text-align: center;
-        }
-        .login-form {
-            padding: 30px;
-        }
-        .form-control:focus {
-            border-color: #667eea;
-            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
-        }
-        .btn-primary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border: none;
-            width: 100%;
-            padding: 12px;
-            font-size: 16px;
-        }
-        .btn-primary:hover {
-            background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
-        }
-        .alert {
-            margin-bottom: 15px;
-            border-radius: 8px;
-        }
-        .input-group-text {
-            background-color: #f8f9fa;
-            border-right: none;
-        }
-        .form-control {
-            border-left: none;
-        }
-        .form-control:focus + .input-group-text {
-            border-color: #667eea;
         }
     </style>
 </head>
 <body>
-    <div class="login-container">
-        <div class="login-header">
+    <div class="card card-custom login-card">
+        <div class="card-header card-header-custom text-center p-4">
             <h3 class="mb-0">
                 <i class="fas fa-clipboard-check me-2"></i>
                 信息委员评分系统
             </h3>
-            <p class="mb-0 opacity-75">登录您的账户</p>
+            <p class="mb-0 text-muted">登录您的账户</p>
         </div>
         
-        <div class="login-form">
+        <div class="card-body p-4">
             {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
                     {% for category, message in messages %}
@@ -125,7 +84,7 @@
                     {{ form.remember_me.label(class="form-check-label") }}
                 </div>
                 
-                <button type="submit" class="btn btn-primary">
+                <button type="submit" class="btn btn-primary-custom w-100 py-2 fs-6">
                     <i class="fas fa-sign-in-alt me-2"></i>
                     登录
                 </button>

@@ -5,13 +5,31 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>服务器错误 - 信息委员评分系统</title>
     <link href="{{ url_for('static', filename='bootstrap.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='custom.css') }}" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+        .status-card {
+            width: 100%;
+            max-width: 450px;
+        }
+    </style>
 </head>
 <body>
-    <div class="container text-center mt-5">
-        <h1 class="display-1 text-danger">500</h1>
-        <h2>服务器内部错误</h2>
-        <p class="lead">抱歉，服务器遇到了意外错误。</p>
-        <a href="{{ url_for('index') }}" class="btn btn-primary">返回首页</a>
+    <div class="card card-custom status-card text-center">
+        <div class="card-body p-5">
+            <h1 class="display-1 text-danger fw-bold">500</h1>
+            <h2 class="mb-3">服务器内部错误</h2>
+            <p class="text-muted mb-4">抱歉，服务器遇到了意外错误。请稍后重试或联系管理员。</p>
+            <a href="{{ url_for('index') }}" class="btn btn-primary-custom">
+                <i class="fas fa-home me-2"></i>返回首页
+            </a>
+        </div>
     </div>
 </body>
 </html>

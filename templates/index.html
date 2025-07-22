@@ -6,6 +6,7 @@
   <title>信息委员评分系统</title>
   <link href="{{ url_for('static', filename='bootstrap.min.css') }}" rel="stylesheet">
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+  <link href="{{ url_for('static', filename='custom.css') }}" rel="stylesheet">
   <style>
     .score-input {
       width: 60px;
@@ -17,18 +18,14 @@
     .navbar-brand {
       font-weight: bold;
     }
-    .user-info {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      padding: 15px;
-      border-radius: 8px;
-      margin-bottom: 20px;
+    .user-info-card .card-body {
+        padding: 1rem;
     }
   </style>
 </head>
 <body>
   <!-- 导航栏 -->
-  <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+  <nav class="navbar navbar-expand-lg navbar-light navbar-custom">
     <div class="container">
       <a class="navbar-brand" href="{{ url_for('index') }}">
         <i class="fas fa-clipboard-check me-2"></i>
@@ -59,58 +56,58 @@
 
   <div class="container py-4">
     <!-- 用户信息卡片 -->
-    <div class="user-info">
-      <div class="d-flex justify-content-between align-items-center">
-        <div>
-          <h5 class="mb-1">
-            <i class="fas fa-user me-2"></i>
-            {{ user.username }}
-          </h5>
-          <p class="mb-0 opacity-75">
-            班级: {{ user.class_name }} | 角色: {{ user.role }}
-          </p>
-          {% if current_period %}
-          <p class="mb-0 opacity-75">
-            <i class="fas fa-calendar-week me-1"></i>
-            <span id="current-period-info">第{{ current_period.number }}周期 ({{ current_period.start }} - {{ current_period.end }})</span>
-          </p>
-          {% else %}
-          <p class="mb-0 opacity-75">
-            <i class="fas fa-calendar-week me-1"></i>
-            <span id="current-period-info">加载周期信息中...</span>
-          </p>
-          {% endif %}
+    <div class="card card-custom user-info-card mb-4">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h5 class="mb-1">
+                        <i class="fas fa-user me-2"></i>
+                        {{ user.username }}
+                    </h5>
+                    <p class="mb-0 text-muted">
+                        班级: {{ user.class_name }} | 角色: {{ user.role }}
+                    </p>
+                    {% if current_period %}
+                    <p class="mb-0 text-muted">
+                        <i class="fas fa-calendar-week me-1"></i>
+                        <span id="current-period-info">第{{ current_period.number }}周期 ({{ current_period.start }} - {{ current_period.end }})</span>
+                    </p>
+                    {% else %}
+                    <p class="mb-0 text-muted">
+                        <i class="fas fa-calendar-week me-1"></i>
+                        <span id="current-period-info">加载周期信息中...</span>
+                    </p>
+                    {% endif %}
+                </div>
+                <div class="text-end">
+                    <small class="text-muted">今天是</small>
+                    <br>
+                    <span id="current-date"></span>
+                </div>
+            </div>
         </div>
-        <div class="text-end">
-          <small class="opacity-75">今天是</small>
-          <br>
-          <span id="current-date"></span>
-        </div>
-      </div>
     </div>
 
-    <div class="card mb-4">
-      <div class="card-header bg-primary text-white">
+    <div class="card card-custom mb-4">
+      <div class="card-header card-header-custom">
         <h5 class="mb-0">评分人信息</h5>
       </div>
       <div class="card-body">
-        <div class="row">
-          <div class="col-md-6 mb-3">
-            <label class="form-label fw-bold">用户名</label>
-            <div class="form-control-plaintext fw-bold text-primary">{{ user.username }}</div>
+        <div class="row align-items-end">
+          <div class="col-md-4">
+            <label class="form-label fw-bold mb-1">用户名</label>
+            <div class="form-control-plaintext">{{ user.username }}</div>
           </div>
-          <div class="col-md-6 mb-3">
-            <label class="form-label fw-bold">信息委员班级</label>
-            <div class="form-control-plaintext fw-bold text-primary">{{ user.class_name }}</div>
+          <div class="col-md-4">
+            <label class="form-label fw-bold mb-1">信息委员班级</label>
+            <div class="form-control-plaintext fw-bold" style="color: #5D9CEC;">{{ user.class_name }}</div>
           </div>
-        </div>
-        <div class="row">
-          <div class="col-md-6 mb-3">
-            <label for="checked_grade" class="form-label fw-bold">被查年级</label>
+          <div class="col-md-4">
+            <label for="checked_grade" class="form-label fw-bold mb-1">被查年级</label>
             {% if auto_target_grade %}
             <!-- 自动识别到目标年级，显示为只读 -->
             <div class="form-control-plaintext fw-bold text-success">
-              {{ auto_target_grade }} 
+              {{ auto_target_grade }}
               <small class="text-muted">(自动识别)</small>
             </div>
             <input type="hidden" id="checked_grade" name="checked_grade" value="{{ auto_target_grade }}">
@@ -131,8 +128,8 @@
       </div>
     </div>
 
-    <div class="card">
-      <div class="card-header bg-primary text-white">
+    <div class="card card-custom">
+      <div class="card-header card-header-custom">
         <h5 class="mb-0">班级评分表</h5>
       </div>
       <div class="card-body">
@@ -153,7 +150,7 @@
         </div>
 
         <div class="d-grid gap-2 mt-3">
-          <button type="button" id="submitBtn" class="btn btn-primary btn-lg" disabled>
+          <button type="button" id="submitBtn" class="btn btn-primary-custom btn-lg" disabled>
             <span id="submitText">提交全部评分</span>
             <span id="submitSpinner" class="spinner-border spinner-border-sm d-none" role="status"></span>
           </button>
@@ -253,7 +250,7 @@
               <td><input type="number" class="form-control score-input score2" min="0" max="3" value="3" required></td>
               <td><input type="number" class="form-control score-input score3" min="0" max="4" value="4" required></td>
               <td><input type="number" class="form-control score-input total" value="10" readonly></td>
-              <td><input type="text" class="form-control note" placeholder="备注"></td>
+              <td><textarea class="form-control note" placeholder="备注" maxlength="50" rows="1"></textarea></td>
             </tr>`;
           $body.append(row);
         });
