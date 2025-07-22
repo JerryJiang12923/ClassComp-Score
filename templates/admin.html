@@ -1,653 +1,690 @@
-{% extends "base.html" %}
-
-{% block title %}{% if user.is_admin() %}管理员面板{% else %}教师数据查看{% endif %} - 信息委员评分系统{% endblock %}
-
-{% block head %}
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% if user.is_admin() %}管理员面板{% else %}教师数据查看{% endif %} - 信息委员评分系统</title>
+    <link href="{{ url_for('static', filename='bootstrap.min.css') }}" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="https://cdn.datatables.net/1.11.5/css/dataTables.bootstrap5.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='custom.css') }}" rel="stylesheet">
     <style>
+        .navbar-brand { font-weight: bold; }
         .chart-container { position: relative; height: 300px; margin-bottom: 20px; }
     </style>
-{% endblock %}
+</head>
+<body data-user-type="{% if user.is_teacher() and not ('全校' in user.class_name or 'ALL' in user.class_name.upper()) %}regular_teacher{% else %}admin_or_school_teacher{% endif %}">
+    <!-- 导航栏 -->
+    <nav class="navbar navbar-expand-lg navbar-light navbar-custom">
+        <div class="container">
+            <a class="navbar-brand" href="{{ url_for('index') }}">
+                <i class="fas fa-clipboard-check me-2"></i>
+                信息委员评分系统
+            </a>
+            <div class="navbar-nav ms-auto">
+                {% if user.is_admin() %}
+                    <span class="navbar-text me-3">管理员: {{ user.username }}</span>
+                    <a class="nav-link" href="{{ url_for('index') }}">
+                        <i class="fas fa-home me-1"></i>返回首页
+                    </a>
+                    <a class="nav-link" href="{{ url_for('admin_users') }}">
+                        <i class="fas fa-users me-1"></i>用户管理
+                    </a>
+                    <a class="nav-link" href="{{ url_for('admin_semester') }}">
+                        <i class="fas fa-cog me-1"></i>学期设置
+                    </a>
+                {% else %}
+                    <span class="navbar-text me-3">教师: {{ user.username }}</span>
+                    <a class="nav-link" href="{{ url_for('my_scores') }}">
+                        <i class="fas fa-tasks me-1"></i>班级监测
+                    </a>
+                {% endif %}
+                <a class="nav-link" href="{{ url_for('logout') }}">
+                    <i class="fas fa-sign-out-alt me-1"></i>退出
+                </a>
+            </div>
+        </div>
+    </nav>
 
-{% block content %}
-<div class="container-fluid" data-user-type="{% if user.is_teacher() and not ('全校' in user.class_name or 'ALL' in user.class_name.upper()) %}regular_teacher{% else %}admin_or_school_teacher{% endif %}">
-    <h2 class="mb-4 text-center">
-        <i class="fas fa-cog me-2"></i>
-        {% if user.is_admin() %}
-            管理员面板
-        {% else %}
-            教师数据查看面板
-        {% endif %}
-    </h2>
+    <div class="container-fluid py-4">
+        <h2 class="mb-4 text-center">
+            <i class="fas fa-cog me-2"></i>
+            {% if user.is_admin() %}
+                管理员面板
+            {% else %}
+                教师数据查看面板
+            {% endif %}
+        </h2>
 
-    <!-- 统计概览 -->
-    <div class="row mb-4">
-        <div class="col-lg-3 col-md-6 mb-3">
-            <div class="stats-card">
-                <div class="d-flex align-items-center">
-                    <div class="me-3">
-                        <i class="fas fa-users fa-2x"></i>
+        <!-- 统计概览 -->
+        <div class="row mb-4">
+            <div class="col-lg-3 col-md-6 mb-3">
+                <div class="stats-card">
+                    <div class="d-flex align-items-center">
+                        <div class="me-3">
+                            <i class="fas fa-users fa-2x"></i>
+                        </div>
+                        <div>
+                            <h4>{{ total_users }}</h4>
+                            <p class="mb-0">总用户数</p>
+                        </div>
                     </div>
-                    <div>
-                        <h4>{{ total_users }}</h4>
-                        <p class="mb-0">总用户数</p>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-6 mb-3">
+                <div class="stats-card">
+                    <div class="d-flex align-items-center">
+                        <div class="me-3">
+                            <i class="fas fa-star fa-2x"></i>
+                        </div>
+                        <div>
+                            <h4>{{ total_scores }}</h4>
+                            <p class="mb-0">总评分数</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-6 mb-3">
+                <div class="stats-card">
+                    <div class="d-flex align-items-center">
+                        <div class="me-3">
+                            <i class="fas fa-chart-bar fa-2x"></i>
+                        </div>
+                        <div>
+                            <h4>{{ "%.1f"|format(avg_score) }}</h4>
+                            <p class="mb-0">平均分数</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-6 mb-3">
+                <div class="stats-card">
+                    <div class="d-flex align-items-center">
+                        <div class="me-3">
+                            <i class="fas fa-calendar-check fa-2x"></i>
+                        </div>
+                        <div>
+                            <h4>{{ today_scores }}</h4>
+                            <p class="mb-0">今日评分</p>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
-        <div class="col-lg-3 col-md-6 mb-3">
-            <div class="stats-card">
-                <div class="d-flex align-items-center">
-                    <div class="me-3">
-                        <i class="fas fa-star fa-2x"></i>
+
+
+        <!-- 数据管理区域 -->
+        <div class="row">
+            <div class="col-lg-9 mb-3">
+                <div class="card card-custom">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">最近评分记录</h5>
+                        <div>
+                            <a href="/export_excel?month={{ current_month }}" class="btn btn-success-custom btn-sm">
+                                <i class="fas fa-download me-1"></i>导出本月数据
+                            </a>
+                        </div>
                     </div>
-                    <div>
-                        <h4>{{ total_scores }}</h4>
-                        <p class="mb-0">总评分数</p>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table id="recentScoresTable" class="table table-hover">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>时间</th>
+                                        <th>评分人</th>
+                                        <th>评分班级</th>
+                                        <th>被查年级</th>
+                                        <th>被查班级</th>
+                                        <th>总分</th>
+                                        <th>备注</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="recent-scores-tbody">
+                                    {% if recent_scores %}
+                                        {% for score in recent_scores %}
+                                        <tr>
+                                            <td>{{ score.created_at | format_datetime if score.created_at else '未知' }}</td>
+                                            <td>{{ score.username or score.evaluator_name }}</td>
+                                            <td>{{ score.evaluator_class_name or score.evaluator_class }}</td>
+                                            <td>{{ score.target_grade }}</td>
+                                            <td>{{ score.target_class }}</td>
+                                            <td>
+                                                <span class="badge-custom {{ 'badge-score-high' if score.total >= 8 else 'badge-score-mid' if score.total >= 6 else 'badge-score-low' }} badge-sm">
+                                                    {{ score.total }}/10
+                                                </span>
+                                            </td>
+                                            <td title="{{ score.note }}" style="max-width: 120px;">
+                                                <div style="display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; text-overflow: ellipsis;">
+                                                    {{ score.note or '-' }}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    {% else %}
+                                        <tr>
+                                            <td colspan="7" class="text-center">暂无数据</td>
+                                        </tr>
+                                    {% endif %}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
-        <div class="col-lg-3 col-md-6 mb-3">
-            <div class="stats-card">
-                <div class="d-flex align-items-center">
-                    <div class="me-3">
-                        <i class="fas fa-chart-bar fa-2x"></i>
+            <div class="col-lg-3 mb-3">
+                <div class="card card-custom">
+                    <div class="card-header">
+                        <h5 class="mb-0">快捷操作</h5>
                     </div>
-                    <div>
-                        <h4>{{ "%.1f"|format(avg_score) }}</h4>
-                        <p class="mb-0">平均分数</p>
+                    <div class="card-body">
+                        <div class="d-grid gap-2">
+                            <button class="btn btn-custom" onclick="refreshData()">
+                                <i class="fas fa-sync-alt me-2"></i>刷新数据
+                            </button>
+                            <button class="btn btn-custom" onclick="showStatsModal()">
+                                <i class="fas fa-chart-pie me-2"></i>详细统计
+                            </button>
+                            {% if user.is_admin() and environment_info %}
+                            <button class="btn btn-custom" onclick="showEnvironmentInfo()">
+                                <i class="fas fa-server me-2"></i>环境信息
+                            </button>
+                            {% endif %}
+                            <button class="btn btn-custom" onclick="exportAllData()">
+                                <i class="fas fa-file-excel me-2"></i>导出全部数据
+                            </button>
+                            <button class="btn btn-custom" onclick="clearCache()">
+                                <i class="fas fa-broom me-2"></i>清理缓存
+                            </button>
+                        </div>
                     </div>
                 </div>
-            </div>
-        </div>
-        <div class="col-lg-3 col-md-6 mb-3">
-            <div class="stats-card">
-                <div class="d-flex align-items-center">
-                    <div class="me-3">
-                        <i class="fas fa-calendar-check fa-2x"></i>
+                <!-- 年级评分分布图 -->
+                <div class="card card-custom mt-3">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            {% if user.is_teacher() %}
+                                {% if '全校' in user.class_name or 'ALL' in user.class_name.upper() %}
+                                    全校年级评分分布
+                                {% else %}
+                                    本年级班级本周期完成情况
+                                {% endif %}
+                            {% else %}
+                                年级评分分布
+                            {% endif %}
+                        </h5>
                     </div>
-                    <div>
-                        <h4>{{ today_scores }}</h4>
-                        <p class="mb-0">今日评分</p>
+                    <div class="card-body">
+                        <canvas id="gradeChart"></canvas>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-
-    <!-- 数据管理区域 -->
-    <div class="row">
-        <div class="col-lg-9 mb-3">
-            <div class="card card-custom">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0">最近评分记录</h5>
-                    <div>
-                        <a href="/export_excel?month={{ current_month }}" class="btn btn-success-custom btn-sm">
-                            <i class="fas fa-download me-1"></i>导出本月数据
-                        </a>
-                    </div>
+    <!-- 环境信息模态框 -->
+    {% if user.is_admin() and environment_info %}
+    <div class="modal fade" id="environmentModal" tabindex="-1" aria-labelledby="environmentModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title" id="environmentModalLabel">
+                        <i class="fas fa-server me-2"></i>系统环境信息
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <div class="card-body">
-                    <div class="table-responsive">
-                        <table id="recentScoresTable" class="table table-hover">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>时间</th>
-                                    <th>评分人</th>
-                                    <th>评分班级</th>
-                                    <th>被查年级</th>
-                                    <th>被查班级</th>
-                                    <th>总分</th>
-                                    <th>备注</th>
-                                </tr>
-                            </thead>
-                            <tbody id="recent-scores-tbody">
-                                {% if recent_scores %}
-                                    {% for score in recent_scores %}
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6 class="text-primary mb-3"><i class="fas fa-database me-2"></i>数据库配置</h6>
+                            <table class="table table-sm table-borderless">
+                                <tbody>
                                     <tr>
-                                        <td>{{ score.created_at | format_datetime if score.created_at else '未知' }}</td>
-                                        <td>{{ score.username or score.evaluator_name }}</td>
-                                        <td>{{ score.evaluator_class_name or score.evaluator_class }}</td>
-                                        <td>{{ score.target_grade }}</td>
-                                        <td>{{ score.target_class }}</td>
+                                        <td class="fw-bold">数据库类型:</td>
                                         <td>
-                                            <span class="badge-custom {{ 'badge-score-high' if score.total >= 8 else 'badge-score-mid' if score.total >= 6 else 'badge-score-low' }} badge-sm">
-                                                {{ score.total }}/10
+                                            <span class="badge {{ 'bg-primary' if environment_info.database_type == 'PostgreSQL' else 'bg-secondary' }}">
+                                                {{ environment_info.database_type }}
                                             </span>
                                         </td>
-                                        <td title="{{ score.note }}" style="max-width: 120px;">
-                                            <div style="display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; text-overflow: ellipsis;">
-                                                {{ score.note or '-' }}
-                                            </div>
+                                    </tr>
+                                    <tr>
+                                        <td class="fw-bold">连接信息:</td>
+                                        <td><code class="small">{{ environment_info.database_url }}</code></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="col-md-6">
+                            <h6 class="text-primary mb-3"><i class="fas fa-flask me-2"></i>Flask 配置</h6>
+                            <table class="table table-sm table-borderless">
+                                <tbody>
+                                    <tr>
+                                        <td class="fw-bold">运行环境:</td>
+                                        <td>
+                                            <span class="badge {{ 'bg-success' if environment_info.flask_env == 'production' else 'bg-warning' }}">
+                                                {{ environment_info.flask_env.upper() }}
+                                            </span>
                                         </td>
                                     </tr>
-                                    {% endfor %}
-                                {% else %}
                                     <tr>
-                                        <td colspan="7" class="text-center">暂无数据</td>
+                                        <td class="fw-bold">调试模式:</td>
+                                        <td>
+                                            <span class="badge {{ 'bg-danger' if environment_info.debug_mode else 'bg-success' }}">
+                                                {{ '开启' if environment_info.debug_mode else '关闭' }}
+                                            </span>
+                                        </td>
                                     </tr>
-                                {% endif %}
-                            </tbody>
-                        </table>
+                                    <tr>
+                                        <td class="fw-bold">WSGI服务器:</td>
+                                        <td>
+                                            <span class="badge bg-info">{{ environment_info.wsgi_server }}</span>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-lg-3 mb-3">
-            <div class="card card-custom">
-                <div class="card-header">
-                    <h5 class="mb-0">快捷操作</h5>
-                </div>
-                <div class="card-body">
-                    <div class="d-grid gap-2">
-                        <button class="btn btn-custom" onclick="refreshData()">
-                            <i class="fas fa-sync-alt me-2"></i>刷新数据
-                        </button>
-                        <button class="btn btn-custom" onclick="showStatsModal()">
-                            <i class="fas fa-chart-pie me-2"></i>详细统计
-                        </button>
-                        {% if user.is_admin() and environment_info %}
-                        <button class="btn btn-custom" onclick="showEnvironmentInfo()">
-                            <i class="fas fa-server me-2"></i>环境信息
-                        </button>
-                        {% endif %}
-                        <button class="btn btn-custom" onclick="exportAllData()">
-                            <i class="fas fa-file-excel me-2"></i>导出全部数据
-                        </button>
-                        <button class="btn btn-custom" onclick="clearCache()">
-                            <i class="fas fa-broom me-2"></i>清理缓存
-                        </button>
+                    <hr>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6 class="text-primary mb-3"><i class="fas fa-desktop me-2"></i>系统信息</h6>
+                            <table class="table table-sm table-borderless">
+                                <tbody>
+                                    <tr>
+                                        <td class="fw-bold">操作系统:</td>
+                                        <td><code class="small">{{ environment_info.platform }}</code></td>
+                                    </tr>
+                                    <tr>
+                                        <td class="fw-bold">Python版本:</td>
+                                        <td><span class="badge bg-secondary">{{ environment_info.python_version }}</span></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="col-md-6">
+                            <h6 class="text-primary mb-3"><i class="fas fa-memory me-2"></i>硬件资源</h6>
+                            <table class="table table-sm table-borderless">
+                                <tbody>
+                                    <tr>
+                                        <td class="fw-bold">CPU核心数:</td>
+                                        <td><span class="badge bg-info">{{ environment_info.cpu_count }} 核</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td class="fw-bold">总内存:</td>
+                                        <td><span class="badge bg-primary">{{ environment_info.memory_total }}</span></td>
+                                    </tr>
+                                    <tr>
+                                        <td class="fw-bold">可用内存:</td>
+                                        <td><span class="badge bg-success">{{ environment_info.memory_available }}</span></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
-                </div>
-            </div>
-            <!-- 年级评分分布图 -->
-            <div class="card card-custom mt-3">
-                <div class="card-header">
-                    <h5 class="mb-0">
-                        {% if user.is_teacher() %}
-                            {% if '全校' in user.class_name or 'ALL' in user.class_name.upper() %}
-                                全校年级评分分布
-                            {% else %}
-                                本年级班级本周期完成情况
-                            {% endif %}
+                    <div class="alert alert-info mt-3 mb-0">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>部署状态:</strong> 
+                        {% if environment_info.flask_env == 'production' and not environment_info.debug_mode %}
+                            <span class="text-success">✅ 生产环境配置正常</span>
                         {% else %}
-                            年级评分分布
+                            <span class="text-warning">⚠️ 当前为开发环境</span>
                         {% endif %}
-                    </h5>
+                    </div>
                 </div>
-                <div class="card-body">
-                    <canvas id="gradeChart"></canvas>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
                 </div>
             </div>
         </div>
     </div>
-</div>
+    {% endif %}
 
-<!-- 环境信息模态框 -->
-{% if user.is_admin() and environment_info %}
-<div class="modal fade" id="environmentModal" tabindex="-1" aria-labelledby="environmentModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header bg-success text-white">
-                <h5 class="modal-title" id="environmentModalLabel">
-                    <i class="fas fa-server me-2"></i>系统环境信息
-                </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <div class="row">
-                    <div class="col-md-6">
-                        <h6 class="text-primary mb-3"><i class="fas fa-database me-2"></i>数据库配置</h6>
-                        <table class="table table-sm table-borderless">
-                            <tbody>
-                                <tr>
-                                    <td class="fw-bold">数据库类型:</td>
-                                    <td>
-                                        <span class="badge {{ 'bg-primary' if environment_info.database_type == 'PostgreSQL' else 'bg-secondary' }}">
-                                            {{ environment_info.database_type }}
-                                        </span>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td class="fw-bold">连接信息:</td>
-                                    <td><code class="small">{{ environment_info.database_url }}</code></td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    <div class="col-md-6">
-                        <h6 class="text-primary mb-3"><i class="fas fa-flask me-2"></i>Flask 配置</h6>
-                        <table class="table table-sm table-borderless">
-                            <tbody>
-                                <tr>
-                                    <td class="fw-bold">运行环境:</td>
-                                    <td>
-                                        <span class="badge {{ 'bg-success' if environment_info.flask_env == 'production' else 'bg-warning' }}">
-                                            {{ environment_info.flask_env.upper() }}
-                                        </span>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td class="fw-bold">调试模式:</td>
-                                    <td>
-                                        <span class="badge {{ 'bg-danger' if environment_info.debug_mode else 'bg-success' }}">
-                                            {{ '开启' if environment_info.debug_mode else '关闭' }}
-                                        </span>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td class="fw-bold">WSGI服务器:</td>
-                                    <td>
-                                        <span class="badge bg-info">{{ environment_info.wsgi_server }}</span>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-                <hr>
-                <div class="row">
-                    <div class="col-md-6">
-                        <h6 class="text-primary mb-3"><i class="fas fa-desktop me-2"></i>系统信息</h6>
-                        <table class="table table-sm table-borderless">
-                            <tbody>
-                                <tr>
-                                    <td class="fw-bold">操作系统:</td>
-                                    <td><code class="small">{{ environment_info.platform }}</code></td>
-                                </tr>
-                                <tr>
-                                    <td class="fw-bold">Python版本:</td>
-                                    <td><span class="badge bg-secondary">{{ environment_info.python_version }}</span></td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    <div class="col-md-6">
-                        <h6 class="text-primary mb-3"><i class="fas fa-memory me-2"></i>硬件资源</h6>
-                        <table class="table table-sm table-borderless">
-                            <tbody>
-                                <tr>
-                                    <td class="fw-bold">CPU核心数:</td>
-                                    <td><span class="badge bg-info">{{ environment_info.cpu_count }} 核</span></td>
-                                </tr>
-                                <tr>
-                                    <td class="fw-bold">总内存:</td>
-                                    <td><span class="badge bg-primary">{{ environment_info.memory_total }}</span></td>
-                                </tr>
-                                <tr>
-                                    <td class="fw-bold">可用内存:</td>
-                                    <td><span class="badge bg-success">{{ environment_info.memory_available }}</span></td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-                <div class="alert alert-info mt-3 mb-0">
-                    <i class="fas fa-info-circle me-2"></i>
-                    <strong>部署状态:</strong>
-                    {% if environment_info.flask_env == 'production' and not environment_info.debug_mode %}
-                        <span class="text-success">✅ 生产环境配置正常</span>
-                    {% else %}
-                        <span class="text-warning">⚠️ 当前为开发环境</span>
-                    {% endif %}
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
-            </div>
-        </div>
-    </div>
-</div>
-{% endif %}
-{% endblock %}
-
-{% block scripts %}
-<script src="https://cdn.datatables.net/1.11.5/js/jquery.dataTables.min.js"></script>
-<script src="https://cdn.datatables.net/1.11.5/js/dataTables.bootstrap5.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
-<!-- 将后端数据传递给前端 -->
-<script id="chart-data" type="application/json">
-    {
-        "gradeStats": [
-            {% for grade in grade_stats %}
-            {
-                "target_grade": "{{ grade.display_grade }}",
-                "count": {{ grade.count }}
-            }{% if not loop.last %},{% endif %}
-            {% endfor %}
-        ],
-        "dailyTrend": [
-            {% for trend in daily_trend %}
-            {
-                "date": "{{ trend.date }}",
-                "count": {{ trend.count }}
-            }{% if not loop.last %},{% endif %}
-            {% endfor %}
-        ]
-    }
-</script>
-
-<script>
-    let recentScoresDataTable; // Declare table variable in a wider scope
-
-    $(document).ready(function() {
-        console.log('页面加载完成，开始初始化...');
-        
-        // 延迟初始化，确保DOM完全准备好
-        setTimeout(function() {
-            try {
-                initDataTable();
-            } catch (e) {
-                console.error('DataTable初始化失败:', e);
-            }
-            
-            try {
-                initCharts();
-            } catch (e) {
-                console.error('图表初始化失败:', e);
-            }
-        }, 200);
-    });
-
-    // Add keyboard shortcuts for pagination
-    $(document).on('keydown', function(e) {
-        // Do nothing if the DataTable is not initialized or if typing in an input
-        if (!recentScoresDataTable || e.target.tagName.toLowerCase() === 'input') {
-            return;
-        }
-
-        if (e.key === 'ArrowLeft') {
-            recentScoresDataTable.page('previous').draw('page');
-        } else if (e.key === 'ArrowRight') {
-            recentScoresDataTable.page('next').draw('page');
-        }
-    });
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.datatables.net/1.11.5/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.11.5/js/dataTables.bootstrap5.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     
-    function initDataTable() {
-        console.log('开始初始化DataTable...');
-        
-        // 检查表格是否存在
-        const tableElement = document.getElementById('recentScoresTable');
-        if (!tableElement) {
-            console.error('未找到recentScoresTable表格');
-            return;
+    <!-- 将后端数据传递给前端 -->
+    <script id="chart-data" type="application/json">
+        {
+            "gradeStats": [
+                {% for grade in grade_stats %}
+                {
+                    "target_grade": "{{ grade.display_grade }}",
+                    "count": {{ grade.count }}
+                }{% if not loop.last %},{% endif %}
+                {% endfor %}
+            ],
+            "dailyTrend": [
+                {% for trend in daily_trend %}
+                {
+                    "date": "{{ trend.date }}",
+                    "count": {{ trend.count }}
+                }{% if not loop.last %},{% endif %}
+                {% endfor %}
+            ]
         }
-        
-        // 检查表格结构
-        const thead = tableElement.querySelector('thead');
-        const tbody = tableElement.querySelector('tbody');
-        
-        if (!thead || !tbody) {
-            console.error('表格结构不完整');
-            return;
-        }
-        
-        // 检查表头列数
-        const headerCells = thead.querySelectorAll('th');
-        console.log(`表头列数: ${headerCells.length}`);
-        
-        // 检查表体行数和列数
-        const bodyRows = tbody.querySelectorAll('tr');
-        console.log(`表体行数: ${bodyRows.length}`);
-        
-        if (bodyRows.length > 0) {
-            let canInitDataTable = true;
-            bodyRows.forEach((row, index) => {
-                const cells = row.querySelectorAll('td');
-                
-                // 检查是否是colspan行（如"暂无数据"行）
-                let totalColspan = 0;
-                cells.forEach(cell => {
-                    const colspan = parseInt(cell.getAttribute('colspan') || '1');
-                    totalColspan += colspan;
-                });
-                
-                console.log(`第${index + 1}行: ${cells.length}个单元格，总colspan: ${totalColspan}`);
-                
-                // 只有当总colspan不等于表头列数时才不能初始化DataTable
-                if (totalColspan !== headerCells.length) {
-                    console.warn(`第${index + 1}行列数不匹配: 期望${headerCells.length}列，实际${totalColspan}列，跳过DataTables初始化`);
-                    canInitDataTable = false;
-                }
-            });
+    </script>
+    
+    <script>
+        let recentScoresDataTable; // Declare table variable in a wider scope
+
+        $(document).ready(function() {
+            console.log('页面加载完成，开始初始化...');
             
-            if (!canInitDataTable) {
-                console.info('表格包含colspan行，跳过DataTables初始化但保持表格显示');
-                return; // 不初始化DataTable，但不移除表格内容
-            }
-        }
-        
-        // 如果检查通过，初始化DataTable
-        try {
-            recentScoresDataTable = $('#recentScoresTable').DataTable({
-                order: [[0, 'desc']],
-                pageLength: 15,
-                searching: true,
-                lengthChange: false,
-                destroy: true, // 如果已存在则销毁重建
-                language: {
-                    "sProcessing": "处理中...",
-                    "sLengthMenu": "显示 _MENU_ 项结果",
-                    "sZeroRecords": "没有匹配结果",
-                    "sInfo": "显示第 _START_ 至 _END_ 项结果，共 _TOTAL_ 项",
-                    "sInfoEmpty": "显示第 0 至 0 项结果，共 0 项",
-                    "sInfoFiltered": "(由 _MAX_ 项结果过滤)",
-                    "sInfoPostFix": "",
-                    "sSearch": "搜索:",
-                    "sUrl": "",
-                    "sEmptyTable": "表中数据为空",
-                    "sLoadingRecords": "载入中...",
-                    "sInfoThousands": ",",
-                    "oPaginate": {
-                        "sFirst": "首页",
-                        "sPrevious": "上页",
-                        "sNext": "下页",
-                        "sLast": "末页"
-                    },
-                    "oAria": {
-                        "sSortAscending": ": 以升序排列此列",
-                        "sSortDescending": ": 以降序排列此列"
-                    }
+            // 延迟初始化，确保DOM完全准备好
+            setTimeout(function() {
+                try {
+                    initDataTable();
+                } catch (e) {
+                    console.error('DataTable初始化失败:', e);
                 }
-            });
-            console.log('DataTable初始化成功');
-        } catch (e) {
-            console.error('DataTable初始化异常:', e);
-            // 尝试移除可能导致问题的行
-            try {
-                // 先收集需要移除的行，避免在遍历时直接修改DOM
-                const rowsToRemove = [];
+                
+                try {
+                    initCharts();
+                } catch (e) {
+                    console.error('图表初始化失败:', e);
+                }
+            }, 200);
+        });
+
+        // Add keyboard shortcuts for pagination
+        $(document).on('keydown', function(e) {
+            // Do nothing if the DataTable is not initialized or if typing in an input
+            if (!recentScoresDataTable || e.target.tagName.toLowerCase() === 'input') {
+                return;
+            }
+
+            if (e.key === 'ArrowLeft') {
+                recentScoresDataTable.page('previous').draw('page');
+            } else if (e.key === 'ArrowRight') {
+                recentScoresDataTable.page('next').draw('page');
+            }
+        });
+        
+        function initDataTable() {
+            console.log('开始初始化DataTable...');
+            
+            // 检查表格是否存在
+            const tableElement = document.getElementById('recentScoresTable');
+            if (!tableElement) {
+                console.error('未找到recentScoresTable表格');
+                return;
+            }
+            
+            // 检查表格结构
+            const thead = tableElement.querySelector('thead');
+            const tbody = tableElement.querySelector('tbody');
+            
+            if (!thead || !tbody) {
+                console.error('表格结构不完整');
+                return;
+            }
+            
+            // 检查表头列数
+            const headerCells = thead.querySelectorAll('th');
+            console.log(`表头列数: ${headerCells.length}`);
+            
+            // 检查表体行数和列数
+            const bodyRows = tbody.querySelectorAll('tr');
+            console.log(`表体行数: ${bodyRows.length}`);
+            
+            if (bodyRows.length > 0) {
+                let canInitDataTable = true;
                 bodyRows.forEach((row, index) => {
                     const cells = row.querySelectorAll('td');
+                    
+                    // 检查是否是colspan行（如"暂无数据"行）
                     let totalColspan = 0;
                     cells.forEach(cell => {
                         const colspan = parseInt(cell.getAttribute('colspan') || '1');
                         totalColspan += colspan;
                     });
                     
+                    console.log(`第${index + 1}行: ${cells.length}个单元格，总colspan: ${totalColspan}`);
+                    
+                    // 只有当总colspan不等于表头列数时才不能初始化DataTable
                     if (totalColspan !== headerCells.length) {
-                        console.log(`标记移除问题行${index + 1}`);
-                        rowsToRemove.push(row);
+                        console.warn(`第${index + 1}行列数不匹配: 期望${headerCells.length}列，实际${totalColspan}列，跳过DataTables初始化`);
+                        canInitDataTable = false;
                     }
                 });
                 
-                // 安全地移除问题行
-                rowsToRemove.forEach(row => {
-                    if (row && row.parentNode) {
-                        row.parentNode.removeChild(row);
-                    }
-                });
-                
-                // 重新尝试初始化
+                if (!canInitDataTable) {
+                    console.info('表格包含colspan行，跳过DataTables初始化但保持表格显示');
+                    return; // 不初始化DataTable，但不移除表格内容
+                }
+            }
+            
+            // 如果检查通过，初始化DataTable
+            try {
                 recentScoresDataTable = $('#recentScoresTable').DataTable({
                     order: [[0, 'desc']],
                     pageLength: 15,
                     searching: true,
                     lengthChange: false,
-                    destroy: true,
+                    destroy: true, // 如果已存在则销毁重建
                     language: {
-                        "sEmptyTable": "表中数据为空",
+                        "sProcessing": "处理中...",
+                        "sLengthMenu": "显示 _MENU_ 项结果",
+                        "sZeroRecords": "没有匹配结果",
                         "sInfo": "显示第 _START_ 至 _END_ 项结果，共 _TOTAL_ 项",
                         "sInfoEmpty": "显示第 0 至 0 项结果，共 0 项",
+                        "sInfoFiltered": "(由 _MAX_ 项结果过滤)",
+                        "sInfoPostFix": "",
                         "sSearch": "搜索:",
+                        "sUrl": "",
+                        "sEmptyTable": "表中数据为空",
+                        "sLoadingRecords": "载入中...",
+                        "sInfoThousands": ",",
                         "oPaginate": {
                             "sFirst": "首页",
                             "sPrevious": "上页",
                             "sNext": "下页",
                             "sLast": "末页"
+                        },
+                        "oAria": {
+                            "sSortAscending": ": 以升序排列此列",
+                            "sSortDescending": ": 以降序排列此列"
                         }
                     }
                 });
-                console.log('DataTable修复后初始化成功');
-            } catch (e2) {
-                console.error('DataTable修复失败:', e2);
+                console.log('DataTable初始化成功');
+            } catch (e) {
+                console.error('DataTable初始化异常:', e);
+                // 尝试移除可能导致问题的行
+                try {
+                    // 先收集需要移除的行，避免在遍历时直接修改DOM
+                    const rowsToRemove = [];
+                    bodyRows.forEach((row, index) => {
+                        const cells = row.querySelectorAll('td');
+                        let totalColspan = 0;
+                        cells.forEach(cell => {
+                            const colspan = parseInt(cell.getAttribute('colspan') || '1');
+                            totalColspan += colspan;
+                        });
+                        
+                        if (totalColspan !== headerCells.length) {
+                            console.log(`标记移除问题行${index + 1}`);
+                            rowsToRemove.push(row);
+                        }
+                    });
+                    
+                    // 安全地移除问题行
+                    rowsToRemove.forEach(row => {
+                        if (row && row.parentNode) {
+                            row.parentNode.removeChild(row);
+                        }
+                    });
+                    
+                    // 重新尝试初始化
+                    recentScoresDataTable = $('#recentScoresTable').DataTable({
+                        order: [[0, 'desc']],
+                        pageLength: 15,
+                        searching: true,
+                        lengthChange: false,
+                        destroy: true,
+                        language: {
+                            "sEmptyTable": "表中数据为空",
+                            "sInfo": "显示第 _START_ 至 _END_ 项结果，共 _TOTAL_ 项",
+                            "sInfoEmpty": "显示第 0 至 0 项结果，共 0 项",
+                            "sSearch": "搜索:",
+                            "oPaginate": {
+                                "sFirst": "首页",
+                                "sPrevious": "上页",
+                                "sNext": "下页",
+                                "sLast": "末页"
+                            }
+                        }
+                    });
+                    console.log('DataTable修复后初始化成功');
+                } catch (e2) {
+                    console.error('DataTable修复失败:', e2);
+                }
             }
         }
-    }
 
-    function initCharts() {
-        console.log('开始初始化图表...');
-        
-        // 检查必要的元素是否存在
-        const chartDataElement = document.getElementById('chart-data');
-        const gradeChartElement = document.getElementById('gradeChart');
-        
-        if (!chartDataElement) {
-            console.error('未找到chart-data元素');
-            return;
-        }
-        
-        if (!gradeChartElement) {
-            console.error('未找到gradeChart元素');
-            return;
-        }
-        
-        // 获取后端数据
-        let chartData;
-        try {
-            chartData = JSON.parse(chartDataElement.textContent);
-            console.log('获取到的图表数据:', chartData);
-        } catch (e) {
-            console.error('解析图表数据失败:', e);
-            return;
-        }
-        
-        // 年级评分分布图
-        const gradeCtx = gradeChartElement.getContext('2d');
-        
-        // 通过DOM元素传递用户类型信息
-        const userType = document.body.dataset.userType;
-        const isRegularTeacher = userType === 'regular_teacher';
-        
-        console.log('用户类型:', userType, '是否普通教师:', isRegularTeacher);
-        
-        if (isRegularTeacher) {
-            // 普通教师：显示班级本周期完成情况
-            const completedClasses = chartData.gradeStats.filter(item => item.count === 1);
-            const pendingClasses = chartData.gradeStats.filter(item => item.count === 0);
+        function initCharts() {
+            console.log('开始初始化图表...');
             
-            console.log('普通教师数据:', {
-                总班级: chartData.gradeStats.length,
-                已完成: completedClasses.length,
-                待完成: pendingClasses.length
-            });
+            // 检查必要的元素是否存在
+            const chartDataElement = document.getElementById('chart-data');
+            const gradeChartElement = document.getElementById('gradeChart');
             
-            // 检查是否有数据
-            if (chartData.gradeStats.length === 0) {
-                console.warn('普通教师没有班级数据');
-                gradeCtx.canvas.parentElement.innerHTML = '<div class="text-center text-muted p-4"><i class="fas fa-info-circle"></i><br>暂无班级数据</div>';
-            } else if (completedClasses.length === 0 && pendingClasses.length === 0) {
-                console.warn('普通教师数据异常');
-                gradeCtx.canvas.parentElement.innerHTML = '<div class="text-center text-muted p-4"><i class="fas fa-exclamation-triangle"></i><br>数据加载异常</div>';
-            } else {
-                // 正常显示饼图
-                console.log('创建普通教师饼图');
-                new Chart(gradeCtx, {
-                    type: 'doughnut',
-                    data: {
-                        labels: ['已完成班级', '待完成班级'],
-                        datasets: [{
-                            data: [completedClasses.length, pendingClasses.length],
-                            backgroundColor: ['#88d4c3', '#f2a2a2']
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: { position: 'bottom' },
-                            tooltip: {
-                                callbacks: {
-                                    label: function(context) {
-                                        const label = context.label;
-                                        const value = context.parsed;
-                                        const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                                        const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0';
-                                        return `${label}: ${value}个班级 (${percentage}%)`;
+            if (!chartDataElement) {
+                console.error('未找到chart-data元素');
+                return;
+            }
+            
+            if (!gradeChartElement) {
+                console.error('未找到gradeChart元素');
+                return;
+            }
+            
+            // 获取后端数据
+            let chartData;
+            try {
+                chartData = JSON.parse(chartDataElement.textContent);
+                console.log('获取到的图表数据:', chartData);
+            } catch (e) {
+                console.error('解析图表数据失败:', e);
+                return;
+            }
+            
+            // 年级评分分布图
+            const gradeCtx = gradeChartElement.getContext('2d');
+            
+            // 通过DOM元素传递用户类型信息
+            const userType = document.body.dataset.userType;
+            const isRegularTeacher = userType === 'regular_teacher';
+            
+            console.log('用户类型:', userType, '是否普通教师:', isRegularTeacher);
+            
+            if (isRegularTeacher) {
+                // 普通教师：显示班级本周期完成情况
+                const completedClasses = chartData.gradeStats.filter(item => item.count === 1);
+                const pendingClasses = chartData.gradeStats.filter(item => item.count === 0);
+                
+                console.log('普通教师数据:', {
+                    总班级: chartData.gradeStats.length,
+                    已完成: completedClasses.length,
+                    待完成: pendingClasses.length
+                });
+                
+                // 检查是否有数据
+                if (chartData.gradeStats.length === 0) {
+                    console.warn('普通教师没有班级数据');
+                    gradeCtx.canvas.parentElement.innerHTML = '<div class="text-center text-muted p-4"><i class="fas fa-info-circle"></i><br>暂无班级数据</div>';
+                } else if (completedClasses.length === 0 && pendingClasses.length === 0) {
+                    console.warn('普通教师数据异常');
+                    gradeCtx.canvas.parentElement.innerHTML = '<div class="text-center text-muted p-4"><i class="fas fa-exclamation-triangle"></i><br>数据加载异常</div>';
+                } else {
+                    // 正常显示饼图
+                    console.log('创建普通教师饼图');
+                    new Chart(gradeCtx, {
+                        type: 'doughnut',
+                        data: {
+                            labels: ['已完成班级', '待完成班级'],
+                            datasets: [{
+                                data: [completedClasses.length, pendingClasses.length],
+                                backgroundColor: ['#88d4c3', '#f2a2a2']
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: { position: 'bottom' },
+                                tooltip: {
+                                    callbacks: {
+                                        label: function(context) {
+                                            const label = context.label;
+                                            const value = context.parsed;
+                                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                            const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : '0.0';
+                                            return `${label}: ${value}个班级 (${percentage}%)`;
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
-                });
-            }
-        } else {
-            // 管理员和全校数据教师：显示年级分布
-            if (chartData.gradeStats.length === 0) {
-                // 没有数据时显示提示
-                gradeCtx.canvas.parentElement.innerHTML = '<div class="text-center text-muted p-4"><i class="fas fa-info-circle"></i><br>暂无评分数据</div>';
+                    });
+                }
             } else {
-                new Chart(gradeCtx, {
-                    type: 'doughnut',
-                    data: {
-                        labels: chartData.gradeStats.map(item => item.display_grade || item.target_grade),
-                        datasets: [{
-                            data: chartData.gradeStats.map(item => item.count),
-                            backgroundColor: [
-                                '#82aee4', '#88d4c3', '#f3d38c', '#f2a2a2',
-                                '#c4bfe8', '#b8e994', '#a9cce3', '#f1b8a2'
-                            ]
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: { position: 'bottom' }
+                // 管理员和全校数据教师：显示年级分布
+                if (chartData.gradeStats.length === 0) {
+                    // 没有数据时显示提示
+                    gradeCtx.canvas.parentElement.innerHTML = '<div class="text-center text-muted p-4"><i class="fas fa-info-circle"></i><br>暂无评分数据</div>';
+                } else {
+                    new Chart(gradeCtx, {
+                        type: 'doughnut',
+                        data: {
+                            labels: chartData.gradeStats.map(item => item.display_grade || item.target_grade),
+                            datasets: [{
+                                data: chartData.gradeStats.map(item => item.count),
+                                backgroundColor: [
+                                    '#82aee4', '#88d4c3', '#f3d38c', '#f2a2a2',
+                                    '#c4bfe8', '#b8e994', '#a9cce3', '#f1b8a2'
+                                ]
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: { position: 'bottom' }
+                            }
                         }
-                    }
-                });
+                    });
+                }
+            }
+
+            
+            console.log('图表初始化完成');
+        }
+
+        function refreshData() {
+            location.reload();
+        }
+
+        function showStatsModal() {
+            alert('详细统计功能开发中...');
+        }
+
+        function showEnvironmentInfo() {
+            $('#environmentModal').modal('show');
+        }
+
+        function exportAllData() {
+            window.open('/export_excel?all_data=true', '_blank');
+        }
+
+        function clearCache() {
+            if (confirm('确定要清理缓存吗？')) {
+                alert('缓存清理完成');
             }
         }
-
-        
-        console.log('图表初始化完成');
-    }
-
-    function refreshData() {
-        location.reload();
-    }
-
-    function showStatsModal() {
-        alert('详细统计功能开发中...');
-    }
-
-    function showEnvironmentInfo() {
-        $('#environmentModal').modal('show');
-    }
-
-    function exportAllData() {
-        window.open('/export_excel?all_data=true', '_blank');
-    }
-
-    function clearCache() {
-        if (confirm('确定要清理缓存吗？')) {
-            alert('缓存清理完成');
-        }
-    }
-</script>
-{% endblock %}
+    </script>
+</body>
+</html>
