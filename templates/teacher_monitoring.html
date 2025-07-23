@@ -8,7 +8,7 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="{{ url_for('static', filename='custom.css') }}" rel="stylesheet">
 </head>
-<body>
+<body id="teacher-monitoring-page">
     <nav class="navbar navbar-expand-lg navbar-light navbar-custom">
         <div class="container">
             <a class="navbar-brand" href="{{ url_for('index') }}">
@@ -39,48 +39,52 @@
                     {% endif %}
                 </h2>
                 
-                <div class="alert alert-info mb-4">
-                    <i class="fas fa-info-circle me-2"></i>
-                    <strong>当前周期：</strong>第 {{ current_period }} 周期 ({{ period_start }} 至 {{ period_end }})
-                    <br>
-                    <strong>监测说明：</strong>显示各班级在当前评分周期内的任务完成情况，帮助您督促未完成的班级。
+                <div class="alert alert-info mb-4 d-flex align-items-center">
+                    <i class="fas fa-info-circle fa-lg me-3"></i>
+                    <div>
+                        <strong>当前周期：</strong>
+                        <span class="d-none d-md-inline">第 {{ current_period }} 周期 ({{ period_start }} 至 {{ period_end }})</span>
+                        <span class="d-md-none">{{ period_start }} 至 {{ period_end }}</span>
+                        <br>
+                        <strong>监测说明：</strong>显示各班级在当前评分周期内的任务完成情况，帮助您督促未完成的班级。
+                    </div>
                 </div>
 
                 <!-- 统计概览 -->
-                <div class="row mb-4">
+                <div class="row mb-4 monitor-stats-row">
                     {% set total_classes = class_status|length %}
                     {% set completed_classes = class_status|selectattr('has_scored_this_period', 'equalto', 1)|list|length %}
                     {% set pending_classes = total_classes - completed_classes %}
                     
-                    <div class="col-md-4">
+                    <div class="col-4">
                         <div class="stats-card status-filter-btn" data-status="all">
                             <div class="d-flex align-items-center">
                                 <div class="me-3"><i class="fas fa-users fa-2x"></i></div>
                                 <div>
                                     <h4 id="total-count">{{ total_classes }}</h4>
-                                    <p class="mb-0">总班级数</p>
+                                    <p class="mb-0 d-none d-md-block">总班级数</p>
                                 </div>
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-4">
+                    <div class="col-4">
                         <div class="stats-card status-filter-btn" data-status="completed">
                             <div class="d-flex align-items-center">
                                 <div class="me-3"><i class="fas fa-check-circle fa-2x" style="color: #28a745;"></i></div>
                                 <div>
                                     <h4 id="completed-count">{{ completed_classes }}</h4>
-                                    <p class="mb-0">已完成评分</p>
+                                    <p class="mb-0 d-none d-md-block">已完成评分</p>
                                 </div>
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-4">
+                    <div class="col-4">
                         <div class="stats-card status-filter-btn" data-status="pending">
                             <div class="d-flex align-items-center">
                                 <div class="me-3"><i class="fas fa-times-circle fa-2x" style="color: #e74a3b;"></i></div>
                                 <div>
                                     <h4 id="pending-count">{{ pending_classes }}</h4>
-                                    <p class="mb-0">待完成评分</p>
+                                    <p class="mb-0 d-none d-md-block">待完成评分</p>
                                 </div>
                             </div>
                         </div>
@@ -107,13 +111,14 @@
                     {% set card_class = 'status-active' if has_completed else 'status-inactive' %}
                     {% set card_status = 'completed' if has_completed else 'pending' %}
                     
-                    <div class="col-sm-6 col-md-4 col-lg-3 mb-3 class-card-wrapper" data-grade="{{ class_info.display_grade }}" data-status="{{ card_status }}">
+                    <div class="col-4 col-md-4 col-lg-3 mb-3 class-card-wrapper" data-grade="{{ class_info.display_grade }}" data-status="{{ card_status }}">
                         <div class="card card-custom monitoring-card {{ card_class }}">
                             <div class="card-body">
                                 <div class="d-flex justify-content-between align-items-start mb-2">
                                     <h5 class="card-title mb-0">
                                         <i class="fas fa-users me-2"></i>{{ class_info.class_name }}
                                     </h5>
+                                    <span class="d-none d-md-inline-block">
                                     {% if has_completed %}
                                         <span class="badge-custom badge-status-active">
                                             <i class="fas fa-check me-1"></i>已完成
@@ -123,51 +128,51 @@
                                             <i class="fas fa-times me-1"></i>待完成
                                         </span>
                                     {% endif %}
+                                    </span>
                                 </div>
                                 
-                                <div class="row text-center monitoring-card-stats">
-                                    <div class="col-6">
-                                        <div>
-                                            <strong class="fs-4 text-primary">{{ score_count }}</strong>
+                                <!-- Desktop View -->
+                                <div class="d-none d-md-block">
+                                    <div class="row text-center monitoring-card-stats">
+                                        <div class="col-6">
+                                            <div>
+                                                <strong class="fs-4 text-primary">{{ score_count }}</strong>
+                                            </div>
+                                            <small class="text-muted">本周期评分</small>
                                         </div>
-                                        <small class="text-muted">本周期评分</small>
+                                        <div class="col-6">
+                                            <div>
+                                                {% if class_info.latest_score_time %}
+                                                    <strong class="fs-6 text-success">{{ class_info.latest_score_time | format_datetime('%Y-%m-%d') }}</strong>
+                                                {% else %}
+                                                    <strong class="fs-6 text-muted">未评分</strong>
+                                                {% endif %}
+                                            </div>
+                                            <small class="text-muted">最后评分</small>
+                                        </div>
                                     </div>
-                                    <div class="col-6">
-                                        <div>
-                                            {% if class_info.latest_score_time %}
-                                                <strong class="fs-6 text-success">{{ class_info.latest_score_time | format_datetime('%Y-%m-%d') }}</strong>
+                                    <div class="mt-3">
+                                        <div class="progress" style="height: 6px;">
+                                            {% if has_completed %}
+                                                <div class="progress-bar bg-success" role="progressbar" style="width: 100%;"></div>
                                             {% else %}
-                                                <strong class="fs-6 text-muted">未评分</strong>
+                                                <div class="progress-bar bg-danger" role="progressbar" style="width: 0%;"></div>
                                             {% endif %}
                                         </div>
-                                        <small class="text-muted">最后评分</small>
+                                        <small class="text-muted mt-1 d-block">
+                                            任务状态: {{ '已完成' if has_completed else '待完成' }}
+                                        </small>
                                     </div>
                                 </div>
-                                
-                                <!-- 完成状态进度条 -->
-                                <div class="mt-3">
-                                    <div class="progress" style="height: 6px;">
-                                        {% if has_completed %}
-                                            <div class="progress-bar bg-success" 
-                                                 role="progressbar" 
-                                                 aria-valuenow="100" 
-                                                 aria-valuemin="0" 
-                                                 aria-valuemax="100"
-                                                 style="width: 100%;">
-                                            </div>
-                                        {% else %}
-                                            <div class="progress-bar bg-danger" 
-                                                 role="progressbar" 
-                                                 aria-valuenow="0" 
-                                                 aria-valuemin="0" 
-                                                 aria-valuemax="100"
-                                                 style="width: 0%;">
-                                            </div>
-                                        {% endif %}
-                                    </div>
-                                    <small class="text-muted mt-1 d-block">
-                                        任务状态: {{ '已完成' if has_completed else '待完成' }}
-                                    </small>
+                                <!-- Mobile View -->
+                                <div class="d-md-none mt-2 text-center">
+                                    {% if has_completed %}
+                                        <small class="mobile-card-date">
+                                            {{ class_info.latest_score_time.strftime('%m-%d') }}
+                                        </small>
+                                    {% else %}
+                                        <small class="mobile-card-status">未完成</small>
+                                    {% endif %}
                                 </div>
                             </div>
                         </div>

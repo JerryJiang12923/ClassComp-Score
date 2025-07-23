@@ -267,3 +267,369 @@ body {
     box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15); /* More pronounced shadow */
     transform: translateY(-2px);
 }
+
+/* Environment Modal Specific Tweaks */
+#environmentModal .alert {
+    padding: 0.8rem 1rem; /* Reduce padding to make it less bulky */
+}
+#environmentModal table.table-borderless td:first-child {
+    width: 110px; /* Prevent title wrapping */
+    white-space: nowrap;
+}
+#environmentModal .badge-custom {
+    padding: 0.25em 0.5em; /* Make badges smaller inside the modal */
+    font-size: 0.85em;
+}
+
+/* Admin Users Page: Stats cards padding adjustment */
+#admin-users-page .stats-card .card-body {
+    padding: 0.3rem; /* Reduce padding on desktop */
+}
+
+/* Semester Page: Class chip layout fix */
+.grade-classes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+/* ==========================================================================
+   5. Responsive Design (Mobile First)
+   ========================================================================== */
+/*
+ * 针对移动设备的响应式设计。
+ * 当屏幕宽度小于等于 768px 时，应用以下样式。
+ */
+@media (max-width: 768px) {
+    /* -- 导航栏和用户信息 -- */
+    .navbar-custom .container {
+        padding-left: 15px;
+        padding-right: 15px;
+    }
+    .navbar-nav {
+        flex-direction: row;
+        align-items: center;
+    }
+    .navbar-text {
+        display: none; /* 在小屏幕上隐藏欢迎信息，太长了 */
+    }
+    .navbar-nav .nav-link {
+        margin-left: 0.5rem; /* 给导航链接之间增加间距 */
+    }
+
+    /* -- 用户信息卡片 -- */
+    .user-info-card .d-flex {
+        flex-direction: column;
+        align-items: flex-start !important;
+    }
+    .user-info-card .text-end {
+        text-align: left !important;
+        margin-top: 0.5rem;
+    }
+    .user-info-card .text-end br {
+        display: none;
+    }
+    .user-info-card .text-end small::after {
+        content: ' ';
+        white-space: pre;
+    }
+
+    /* -- 评分人信息卡片 (v2, 更紧凑的布局) -- */
+    .card-body .row.align-items-end > .col-md-4 {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        margin-bottom: 0;
+        padding: 0.15rem 0.8rem; /* 最终微调：减小内容和上下边框的距离 */
+        border-bottom: 1px solid #f0f0f0;
+    }
+    .card-body .row.align-items-end > .col-md-4:last-child {
+        border-bottom: none;
+        padding-bottom: 0;
+    }
+    .card-body .row.align-items-end .form-label {
+        margin-bottom: 0;
+        font-size: 1rem;
+        white-space: nowrap; /* 防止标签换行 */
+        margin-right: 1rem;
+    }
+    .card-body .row.align-items-end .form-control-plaintext,
+    .card-body .row.align-items-end .form-select {
+        direction: rtl;
+        padding: 0;
+        background: none;
+        border: none;
+    }
+
+    /* -- 评分表 -- */
+    #scoreTable th,
+    #scoreTable td {
+        padding: 0.5rem 0.3rem; /* 减小单元格内外边距 */
+        font-size: 0.85rem;   /* 减小字体 */
+        white-space: normal;  /* 允许表头换行 */
+        vertical-align: middle;
+        text-align: center; /* 统一居中对齐 */
+    }
+    #scoreTable th:first-child,
+    #scoreTable td:first-child {
+        min-width: 70px; /* 班级列最小宽度 */
+    }
+    .score-input {
+        width: 40px; /* 缩小输入框 */
+        padding: 0.25rem;
+        font-size: 0.9rem;
+    }
+    #scoreTable .note {
+        min-width: 100px; /* 给备注留出最小宽度 */
+        font-size: 0.85rem;
+        height: 35px; /* 修正CSS错误：使用height替代rows属性，约等于2行 */
+    }
+
+    /* -- 按钮 -- */
+    .btn-lg {
+        font-size: 1rem;
+        padding: 0.75rem 1rem;
+    }
+
+    /* -- 整体布局 -- */
+    .container.py-4 {
+        padding-top: 1.5rem !important;
+        padding-bottom: 1.5rem !important;
+    }
+    /* === Admin & Monitor Page Specific Tweaks === */
+
+    /* Admin 页面表格，根据反馈隐藏特定列 */
+    #recentScoresTable th:nth-child(2), /* 评分人 */
+    #recentScoresTable td:nth-child(2),
+    #recentScoresTable th:nth-child(4), /* 被查年级 */
+    #recentScoresTable td:nth-child(4) {
+        display: none;
+    }
+    /* Admin 页面特定列字体缩小 */
+    #recentScoresTable td:first-child {
+        font-size: 0.7rem;
+    }
+    #recentScoresTable td:nth-child(3) {
+        font-size: 0.8rem;
+    }
+    /* Admin 页面翻页按钮溢出修复和间距调整 */
+    .pagination {
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+    .pagination .page-link {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.8rem;
+    }
+    nav[aria-label="Page navigation"] {
+        margin-top: 0.5rem !important; /* 减小和表格的间距 */
+    }
+
+    /* Teacher Monitoring 页面内容精简 */
+    .monitoring-card .progress,
+    .monitoring-card small.text-muted.mt-1 {
+        display: none;
+    }
+
+    /* My Scores 页面搜索框消失问题修复 */
+    #search-input {
+        display: inline-block !important;
+    }
+
+    /* Admin 页面统计卡片间距调整 */
+    .stats-col {
+        padding-left: 5px;
+        padding-right: 5px;
+        margin-bottom: 0.6rem !important; /* 减小统计卡片在移动端的垂直间距 */
+    }
+
+    /* Admin Page: 统计卡片行增加左右边距 */
+    .stats-row {
+        padding-left: 10px;
+        padding-right: 10px;
+    }
+
+    /* Teacher Monitoring 页面顶部统计卡片内容适配 */
+    #teacher-monitoring-page .stats-card {
+        padding: 10px;
+    }
+    /* 顶部统计卡片内容居中，并调整间距 */
+    #teacher-monitoring-page .stats-card .d-flex {
+        justify-content: center;
+        align-items: center; /* 确保垂直居中 */
+    }
+    #teacher-monitoring-page .stats-card .d-flex > div:first-child {
+        margin-right: 0.5rem !important; /* 减小图标和文字的距离 */
+    }
+    #teacher-monitoring-page .stats-card h4 {
+        font-size: 1.1rem;
+        margin-bottom: 0; /* 移除H4的下边距以辅助垂直居中 */
+    }
+    #teacher-monitoring-page .stats-card p {
+        font-size: 0.75rem;
+    }
+    #teacher-monitoring-page .stats-card .fa-2x {
+        font-size: 1.5em;
+    }
+
+    /* Teacher Monitoring 页面卡片移动端样式 v3 (用户设计) */
+    #teacher-monitoring-page .class-card-wrapper {
+        margin-bottom: 0.9rem !important; /* 减小卡片行间距 */
+        padding-left: 7px; /* 减小卡片列间距 */
+        padding-right: 7px; /* 减小卡片列间距 */
+    }
+    /* 恢复卡片网格区域的外部边距 */
+    #class-cards-container {
+        padding-left: 8px;
+        padding-right: 8px;
+    }
+    /* 统一顶部统计卡片的间距 */
+    .monitor-stats-row {
+        padding-left: 8px;
+        padding-right: 8px;
+    }
+    .monitor-stats-row .col-4 {
+        padding-left: 7px;
+        padding-right: 7px;
+    }
+    /* 修复移动端点击状态过滤器时的跳动问题 v2 */
+    #teacher-monitoring-page .stats-card.status-filter-btn:hover {
+        transform: translateY(-2px); /* 与激活状态的transform保持一致，消除跳动 */
+    }
+    #teacher-monitoring-page .monitoring-card {
+        border-left: none;
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center; /* 加强水平居中 */
+        min-height: 70px; /* 再次缩小卡片高度 */
+    }
+    #teacher-monitoring-page .monitoring-card .card-title {
+        padding-top: 0.4rem; /* 班级名称上方留白 */
+    }
+    #teacher-monitoring-page .monitoring-card.status-active {
+        background-color: #d4edda; /* 项目标准绿色 */
+    }
+    #teacher-monitoring-page .monitoring-card.status-inactive {
+        background-color: #f8d7da; /* 项目标准红色 */
+    }
+    #teacher-monitoring-page .monitoring-card.status-active,
+    #teacher-monitoring-page .monitoring-card.status-active .card-title,
+    #teacher-monitoring-page .monitoring-card.status-active .mobile-card-date {
+        color: #155724; /* 项目标准深绿色文字 */
+    }
+    #teacher-monitoring-page .monitoring-card.status-inactive,
+    #teacher-monitoring-page .monitoring-card.status-inactive .card-title,
+    #teacher-monitoring-page .monitoring-card.status-inactive .mobile-card-status {
+        color: #721c24; /* 项目标准深红色文字 */
+    }
+    #teacher-monitoring-page .monitoring-card .card-body {
+        padding: 0.25rem; /* 缩小内边距 */
+    }
+
+    /* My Scores 页面搜索框消失最终修复 v2 */
+    /* 强制显示整个筛选器卡片 */
+    #my-scores-page .card.mb-4 {
+        display: block !important;
+    }
+    /* Admin Page: 强制表头不换行 (修正) */
+    #recentScoresTable thead th {
+        white-space: nowrap !important;
+    }
+
+    /* Admin Page: Table Alignment & Sizing (Reverted to Left Align) */
+    #recentScoresTable th,
+    #recentScoresTable td {
+        vertical-align: middle !important;
+        /* Horizontal alignment reverted to default (left) */
+    }
+    /* Admin Users Page: Stats cards spacing */
+    #admin-users-page .stats-row {
+        padding-left: 10px;
+        padding-right: 10px;
+    }
+    #admin-users-page .stats-row > div {
+        padding-left: 5px;
+        padding-right: 5px;
+        margin-bottom: 0.7rem; /* Add vertical spacing on mobile */
+    }
+
+    /* Admin Users Page: Create User Form mobile layout */
+    #create-user-card .row > div {
+        margin-bottom: 0.75rem;
+    }
+    #create-user-card .row > div:last-child {
+        margin-bottom: 0;
+    }
+
+    /* Admin Users Page: Bulk Actions mobile layout */
+    #bulk-actions-card .row > div {
+        text-align: center !important;
+        margin-bottom: 0.5rem;
+    }
+    #bulk-actions-card .row > div:last-child {
+        margin-bottom: 0;
+    }
+
+    /* Admin Users Page: User table mobile layout */
+    #admin-users-page #usersTable th:nth-child(5), /* Hide Creation Time */
+    #admin-users-page #usersTable td:nth-child(5),
+    #admin-users-page #usersTable th:nth-child(6), /* Hide Score Count */
+    #admin-users-page #usersTable td:nth-child(6) {
+        display: none;
+    }
+    /* Prevent role column from wrapping */
+    #admin-users-page #usersTable th:nth-child(4),
+    #admin-users-page #usersTable td:nth-child(4) {
+        white-space: nowrap;
+    }
+
+    /* Admin Semester Page: Mobile Layout for stacked columns */
+    #admin-semester-page #semester-config-card .row > div,
+    #admin-semester-page #class-config-card #addClassForm .row > div,
+    #admin-semester-page #data-management-row > div {
+        margin-bottom: 1rem;
+    }
+    #admin-semester-page #semester-config-card .row > div:last-child,
+    #admin-semester-page #class-config-card #addClassForm .row > div:last-child,
+    #admin-semester-page #data-management-row > div:last-child {
+        margin-bottom: 0;
+    }
+    /* Admin Semester Page: Fix centered inputs */
+    #admin-semester-page #semester-config-card .form-control {
+        text-align: left;
+    }
+
+    /* My Scores Page: Mobile Layout */
+    /* Hide table columns */
+    #my-scores-page #scoresTable th:nth-child(2),
+    #my-scores-page #scoresTable td:nth-child(2),
+    #my-scores-page #scoresTable th:nth-child(4),
+    #my-scores-page #scoresTable td:nth-child(4),
+    #my-scores-page #scoresTable th:nth-child(5),
+    #my-scores-page #scoresTable td:nth-child(5),
+    #my-scores-page #scoresTable th:nth-child(6),
+    #my-scores-page #scoresTable td:nth-child(6) {
+        display: none;
+    }
+    /* Stack filter inputs */
+    #my-scores-page #filter-card .row > div {
+        margin-bottom: 1rem;
+    }
+    #my-scores-page #filter-card .row > div:last-child {
+        margin-bottom: 0;
+    }
+
+    /* Simple My Scores Page: Mobile Layout */
+    #simple-my-scores-page .table th:nth-child(2), /* Hide Target Grade */
+    #simple-my-scores-page .table td:nth-child(2),
+    #simple-my-scores-page .table th:nth-child(4), /* Hide Score 1 */
+    #simple-my-scores-page .table td:nth-child(4),
+    #simple-my-scores-page .table th:nth-child(5), /* Hide Score 2 */
+    #simple-my-scores-page .table td:nth-child(5),
+    #simple-my-scores-page .table th:nth-child(6), /* Hide Score 3 */
+    #simple-my-scores-page .table td:nth-child(6) {
+        display: none;
+    }
+}

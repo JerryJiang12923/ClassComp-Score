@@ -13,7 +13,8 @@
             background-color: #fdf5f5;
         }
         .class-chip {
-            display: inline-block;
+            display: inline-flex;
+            align-items: center;
             background: #e9ecef;
             border: 1px solid #dee2e6;
             border-radius: 20px;
@@ -55,7 +56,7 @@
         }
     </style>
 </head>
-<body>
+<body id="admin-semester-page">
     <nav class="navbar navbar-expand-lg navbar-light navbar-custom">
         <div class="container">
             <a class="navbar-brand" href="{{ url_for('index') }}">
@@ -88,7 +89,7 @@
         <!-- 学期基本信息 -->
         <div class="row mb-4">
             <div class="col-12">
-                <div class="card card-custom">
+                <div class="card card-custom" id="semester-config-card">
                     <div class="card-header card-header-custom">
                         <h5 class="mb-0">
                             <i class="fas fa-calendar-alt me-2"></i>学期基本信息
@@ -128,7 +129,7 @@
         <!-- 班级设置 -->
         <div class="row mb-4">
             <div class="col-12">
-                <div class="card card-custom">
+                <div class="card card-custom" id="class-config-card">
                     <div class="card-header card-header-custom d-flex justify-content-between align-items-center">
                         <h5 class="mb-0">
                             <i class="fas fa-users me-2"></i>班级设置
@@ -207,7 +208,7 @@
         </div>
 
         <!-- 数据管理 -->
-        <div class="row">
+        <div class="row" id="data-management-row">
             <div class="col-md-6 mb-3">
                 <div class="card card-custom">
                     <div class="card-header card-header-custom">
@@ -246,10 +247,12 @@
     <!-- 重置确认模态框 -->
     <div class="modal fade" id="resetModal" tabindex="-1">
         <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header bg-danger text-white">
-                    <h5 class="modal-title">确认重置数据库</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            <div class="modal-content card-custom">
+                <div class="modal-header" style="background-color: #f8d7da; color: #721c24;">
+                    <h5 class="modal-title">
+                        <i class="fas fa-exclamation-triangle me-2"></i>确认重置数据库
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
                     <p class="text-danger"><strong>此操作将：</strong></p>
@@ -262,8 +265,8 @@
                     <input type="text" class="form-control" id="confirmCode" placeholder="请输入确认码">
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                    <button type="button" class="btn btn-danger" onclick="confirmReset()">确认重置</button>
+                    <button type="button" class="btn btn-custom" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-custom danger" onclick="confirmReset()">确认重置</button>
                 </div>
             </div>
         </div>

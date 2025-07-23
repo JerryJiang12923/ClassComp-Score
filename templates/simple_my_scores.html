@@ -8,7 +8,7 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="{{ url_for('static', filename='custom.css') }}" rel="stylesheet">
 </head>
-<body>
+<body id="simple-my-scores-page">
     <nav class="navbar navbar-expand-lg navbar-light navbar-custom">
         <div class="container">
             <a class="navbar-brand" href="{{ url_for('index') }}">
@@ -66,7 +66,7 @@
                         <tbody>
                             {% for score in scores %}
                             <tr>
-                                <td>{{ score.created_at | format_datetime }}</td>
+                                <td><span class="d-none d-md-inline">{{ score.created_at | format_datetime('%Y-') }}</span>{{ score.created_at | format_datetime('%m-%d %H:%M') }}</td>
                                 <td>{{ score.target_grade }}</td>
                                 <td>{{ score.target_class }}</td>
                                 <td>{{ score.score1 }}/3</td>

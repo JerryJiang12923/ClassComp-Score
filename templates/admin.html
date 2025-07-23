@@ -58,8 +58,8 @@
         </h2>
 
         <!-- 统计概览 -->
-        <div class="row mb-4">
-            <div class="col-lg-3 col-md-6 mb-3">
+        <div class="row mb-4 stats-row">
+            <div class="col-6 col-lg-3 col-md-6 mb-3 stats-col">
                 <div class="stats-card">
                     <div class="d-flex align-items-center">
                         <div class="me-3">
@@ -72,7 +72,7 @@
                     </div>
                 </div>
             </div>
-            <div class="col-lg-3 col-md-6 mb-3">
+            <div class="col-6 col-lg-3 col-md-6 mb-3 stats-col">
                 <div class="stats-card">
                     <div class="d-flex align-items-center">
                         <div class="me-3">
@@ -85,7 +85,7 @@
                     </div>
                 </div>
             </div>
-            <div class="col-lg-3 col-md-6 mb-3">
+            <div class="col-6 col-lg-3 col-md-6 mb-3 stats-col">
                 <div class="stats-card">
                     <div class="d-flex align-items-center">
                         <div class="me-3">
@@ -98,7 +98,7 @@
                     </div>
                 </div>
             </div>
-            <div class="col-lg-3 col-md-6 mb-3">
+            <div class="col-6 col-lg-3 col-md-6 mb-3 stats-col">
                 <div class="stats-card">
                     <div class="d-flex align-items-center">
                         <div class="me-3">
@@ -133,9 +133,15 @@
                                     <tr>
                                         <th>时间</th>
                                         <th>评分人</th>
-                                        <th>评分班级</th>
+                                        <th>
+                                            <span class="d-none d-md-inline">评分班级</span>
+                                            <span class="d-md-none">评分班</span>
+                                        </th>
                                         <th>被查年级</th>
-                                        <th>被查班级</th>
+                                        <th>
+                                            <span class="d-none d-md-inline">被查班级</span>
+                                            <span class="d-md-none">被查班</span>
+                                        </th>
                                         <th>总分</th>
                                         <th>备注</th>
                                     </tr>
@@ -144,12 +150,19 @@
                                     {% if recent_scores %}
                                         {% for score in recent_scores %}
                                         <tr>
-                                            <td>{{ score.created_at | format_datetime if score.created_at else '未知' }}</td>
+                                            <td>
+                                                {% if score.created_at %}
+                                                    <span class="d-none d-md-inline">{{ score.created_at | format_datetime }}</span>
+                                                    <span class="d-md-none">{{ score.created_at.strftime('%m-%d %H:%M') }}</span>
+                                                {% else %}
+                                                    未知
+                                                {% endif %}
+                                            </td>
                                             <td>{{ score.username or score.evaluator_name }}</td>
                                             <td>{{ score.evaluator_class_name or score.evaluator_class }}</td>
                                             <td>{{ score.target_grade }}</td>
                                             <td>{{ score.target_class }}</td>
-                                            <td>
+                                            <td data-sort="{{ score.total }}">
                                                 <span class="badge-custom {{ 'badge-score-high' if score.total >= 8 else 'badge-score-mid' if score.total >= 6 else 'badge-score-low' }} badge-sm">
                                                     {{ score.total }}/10
                                                 </span>
@@ -170,10 +183,6 @@
                             </table>
                         </div>
                     </div>
-                    <nav aria-label="Page navigation" class="mt-3">
-                        <ul class="pagination justify-content-center" id="admin-pagination-container">
-                        </ul>
-                    </nav>
                 </div>
             </div>
             <div class="col-lg-3 mb-3">
@@ -230,8 +239,8 @@
     {% if user.is_admin() and environment_info %}
     <div class="modal fade" id="environmentModal" tabindex="-1" aria-labelledby="environmentModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header bg-success text-white">
+            <div class="modal-content card-custom">
+                <div class="modal-header card-header-custom">
                     <h5 class="modal-title" id="environmentModalLabel">
                         <i class="fas fa-server me-2"></i>系统环境信息
                     </h5>
@@ -246,7 +255,7 @@
                                     <tr>
                                         <td class="fw-bold">数据库类型:</td>
                                         <td>
-                                            <span class="badge {{ 'bg-primary' if environment_info.database_type == 'PostgreSQL' else 'bg-secondary' }}">
+                                            <span class="badge-custom {{ 'badge-info' if environment_info.database_type == 'PostgreSQL' else 'badge-teacher' }}">
                                                 {{ environment_info.database_type }}
                                             </span>
                                         </td>
@@ -265,7 +274,7 @@
                                     <tr>
                                         <td class="fw-bold">运行环境:</td>
                                         <td>
-                                            <span class="badge {{ 'bg-success' if environment_info.flask_env == 'production' else 'bg-warning' }}">
+                                            <span class="badge-custom {{ 'badge-status-active' if environment_info.flask_env == 'production' else 'badge-teacher' }}">
                                                 {{ environment_info.flask_env.upper() }}
                                             </span>
                                         </td>
@@ -273,7 +282,7 @@
                                     <tr>
                                         <td class="fw-bold">调试模式:</td>
                                         <td>
-                                            <span class="badge {{ 'bg-danger' if environment_info.debug_mode else 'bg-success' }}">
+                                            <span class="badge-custom {{ 'badge-status-inactive' if environment_info.debug_mode else 'badge-status-active' }}">
                                                 {{ '开启' if environment_info.debug_mode else '关闭' }}
                                             </span>
                                         </td>
@@ -281,7 +290,7 @@
                                     <tr>
                                         <td class="fw-bold">WSGI服务器:</td>
                                         <td>
-                                            <span class="badge bg-info">{{ environment_info.wsgi_server }}</span>
+                                            <span class="badge-custom badge-info">{{ environment_info.wsgi_server }}</span>
                                         </td>
                                     </tr>
                                 </tbody>
@@ -300,7 +309,7 @@
                                     </tr>
                                     <tr>
                                         <td class="fw-bold">Python版本:</td>
-                                        <td><span class="badge bg-secondary">{{ environment_info.python_version }}</span></td>
+                                        <td><span class="badge-custom badge-teacher">{{ environment_info.python_version }}</span></td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -311,32 +320,34 @@
                                 <tbody>
                                     <tr>
                                         <td class="fw-bold">CPU核心数:</td>
-                                        <td><span class="badge bg-info">{{ environment_info.cpu_count }} 核</span></td>
+                                        <td><span class="badge-custom badge-info">{{ environment_info.cpu_count }} 核</span></td>
                                     </tr>
                                     <tr>
                                         <td class="fw-bold">总内存:</td>
-                                        <td><span class="badge bg-primary">{{ environment_info.memory_total }}</span></td>
+                                        <td><span class="badge-custom badge-info">{{ environment_info.memory_total }}</span></td>
                                     </tr>
                                     <tr>
                                         <td class="fw-bold">可用内存:</td>
-                                        <td><span class="badge bg-success">{{ environment_info.memory_available }}</span></td>
+                                        <td><span class="badge-custom badge-status-active">{{ environment_info.memory_available }}</span></td>
                                     </tr>
                                 </tbody>
                             </table>
                         </div>
                     </div>
-                    <div class="alert alert-info mt-3 mb-0">
-                        <i class="fas fa-info-circle me-2"></i>
-                        <strong>部署状态:</strong> 
-                        {% if environment_info.flask_env == 'production' and not environment_info.debug_mode %}
-                            <span class="text-success">✅ 生产环境配置正常</span>
-                        {% else %}
-                            <span class="text-warning">⚠️ 当前为开发环境</span>
-                        {% endif %}
+                    <div class="alert alert-info mt-3 mb-0 d-flex align-items-center">
+                        <i class="fas fa-info-circle fa-lg me-3"></i>
+                        <div>
+                            <strong>部署状态:</strong>
+                            {% if environment_info.flask_env == 'production' and not environment_info.debug_mode %}
+                                <span class="text-success">✅ 生产环境配置正常</span>
+                            {% else %}
+                                <span class="text-warning">⚠️ 当前为开发环境</span>
+                            {% endif %}
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                    <button type="button" class="btn btn-custom" data-bs-dismiss="modal">关闭</button>
                 </div>
             </div>
         </div>
@@ -395,64 +406,42 @@
 
         // Add keyboard shortcuts for pagination
         $(document).on('keydown', function(e) {
-            if (e.target.tagName.toLowerCase() === 'input') return;
+            if (!recentScoresDataTable || e.target.tagName.toLowerCase() === 'input') {
+                return;
+            }
             if (e.key === 'ArrowLeft') {
-                e.preventDefault();
-                $('#admin-pagination-container .page-item.active').prev().find('a').click();
+                recentScoresDataTable.page('previous').draw('page');
             } else if (e.key === 'ArrowRight') {
-                e.preventDefault();
-                $('#admin-pagination-container .page-item.active').next().find('a').click();
+                recentScoresDataTable.page('next').draw('page');
             }
         });
         
         function initDataTable() {
-            const tbody = $('#recent-scores-tbody');
-            const rows = tbody.find('tr');
-            const rowsPerPage = 15;
-            const totalPages = Math.ceil(rows.length / rowsPerPage);
-            let currentPage = 1;
-
-            function updatePaginationUI() {
-                const paginationContainer = $('#admin-pagination-container');
-                paginationContainer.empty();
-
-                const prevLi = $(`<li class="page-item ${currentPage === 1 ? 'disabled' : ''}"><a class="page-link" href="#" data-page="${currentPage - 1}">上一页</a></li>`);
-                paginationContainer.append(prevLi);
-
-                for (let i = 1; i <= totalPages; i++) {
-                    const pageLi = $(`<li class="page-item ${i === currentPage ? 'active' : ''}"><a class="page-link" href="#" data-page="${i}">${i}</a></li>`);
-                    paginationContainer.append(pageLi);
-                }
-
-                const nextLi = $(`<li class="page-item ${currentPage === totalPages ? 'disabled' : ''}"><a class="page-link" href="#" data-page="${currentPage + 1}">下一页</a></li>`);
-                paginationContainer.append(nextLi);
-            }
-
-            function showPage(page) {
-                currentPage = page;
-                const start = (page - 1) * rowsPerPage;
-                const end = start + rowsPerPage;
-
-                rows.each(function(index) {
-                    const isVisible = index >= start && index < end;
-                    $(this).toggle(isVisible);
+            if ($('#recent-scores-tbody tr').length > 1 || ($('#recent-scores-tbody tr').length === 1 && $('#recent-scores-tbody tr td').length > 1)) {
+                recentScoresDataTable = $('#recentScoresTable').DataTable({
+                    order: [[0, 'desc']],
+                    pageLength: 15,
+                    searching: true,
+                    lengthChange: false,
+                    language: {
+                        "sProcessing": "处理中...",
+                        "sLengthMenu": "显示 _MENU_ 项结果",
+                        "sZeroRecords": "没有匹配结果",
+                        "sInfo": "显示第 _START_ 至 _END_ 项结果，共 _TOTAL_ 项",
+                        "sInfoEmpty": "显示第 0 至 0 项结果，共 0 项",
+                        "sInfoFiltered": "(由 _MAX_ 项结果过滤)",
+                        "sSearch": "搜索:",
+                        "sEmptyTable": "表中数据为空",
+                        "oPaginate": {
+                            "sPrevious": "上页",
+                            "sNext": "下页"
+                        }
+                    },
+                    columnDefs: [
+                        { "orderable": false, "targets": [1, 3] },
+                        { "type": "num", "targets": 5 }
+                    ]
                 });
-
-                updatePaginationUI();
-            }
-
-            $('#admin-pagination-container').on('click', 'a', function(e) {
-                e.preventDefault();
-                const page = parseInt($(this).data('page'));
-                if (page && !$(this).parent().hasClass('disabled')) {
-                    showPage(page);
-                }
-            });
-
-            if (rows.length > 0) {
-                showPage(1);
-            } else {
-                $('#admin-pagination-container').html('<p class="text-muted">无记录</p>');
             }
         }
 

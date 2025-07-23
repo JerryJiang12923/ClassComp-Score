@@ -8,7 +8,7 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="{{ url_for('static', filename='custom.css') }}" rel="stylesheet">
 </head>
-<body>
+<body id="admin-users-page">
     <nav class="navbar navbar-expand-lg navbar-light navbar-custom">
         <div class="container">
             <a class="navbar-brand" href="{{ url_for('index') }}">
@@ -40,8 +40,8 @@
         </h2>
 
         <!-- 统计卡片 -->
-        <div class="row mb-4">
-            <div class="col-md-3">
+        <div class="row mb-4 stats-row">
+            <div class="col-6 col-md-3">
                 <div class="card stats-card">
                     <div class="card-body text-center">
                         <i class="fas fa-users fa-lg mb-2"></i>
@@ -50,7 +50,7 @@
                     </div>
                 </div>
             </div>
-            <div class="col-md-3">
+            <div class="col-6 col-md-3">
                 <div class="card stats-card">
                     <div class="card-body text-center">
                         <i class="fas fa-user-graduate fa-lg mb-2"></i>
@@ -59,7 +59,7 @@
                     </div>
                 </div>
             </div>
-            <div class="col-md-3">
+            <div class="col-6 col-md-3">
                 <div class="card stats-card">
                     <div class="card-body text-center">
                         <i class="fas fa-chalkboard-teacher fa-lg mb-2"></i>
@@ -68,7 +68,7 @@
                     </div>
                 </div>
             </div>
-            <div class="col-md-3">
+            <div class="col-6 col-md-3">
                 <div class="card stats-card">
                     <div class="card-body text-center">
                         <i class="fas fa-user-shield fa-lg mb-2"></i>
@@ -80,7 +80,7 @@
         </div>
 
         <!-- 创建用户表单 -->
-        <div class="card card-custom mb-4">
+        <div class="card card-custom mb-4" id="create-user-card">
             <div class="card-header card-header-custom">
                 <h5 class="mb-0">
                     <i class="fas fa-user-plus me-2"></i>
@@ -89,7 +89,7 @@
             </div>
             <div class="card-body">
                 <form id="createUserForm">
-                    <div class="row">
+                    <div class="row gy-2">
                         <div class="col-md-3">
                             <label class="form-label">用户名</label>
                             <input type="text" name="username" class="form-control" required 
@@ -125,7 +125,7 @@
         </div>
 
         <!-- 批量操作 -->
-        <div class="card card-custom mb-4">
+        <div class="card card-custom mb-4" id="bulk-actions-card">
             <div class="card-header card-header-custom">
                 <h5 class="mb-0">
                     <i class="fas fa-tools me-2"></i>
@@ -190,7 +190,8 @@
                                 <td class="align-middle">
                                     <strong>{{ user.username }}</strong>
                                     {% if user.id == current_user.id %}
-                                    <span class="badge bg-secondary ms-1">当前用户</span>
+                                    <span class="d-md-none"><br></span>
+                                    <span class="badge-custom badge-teacher badge-sm">当前用户</span>
                                     {% endif %}
                                 </td>
                                 <td class="align-middle">{{ user.class_name }}</td>
@@ -236,9 +237,11 @@
     <!-- 确认删除模态框 -->
     <div class="modal fade" id="deleteModal" tabindex="-1">
         <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">确认删除</h5>
+            <div class="modal-content card-custom">
+                <div class="modal-header" style="background-color: #f8d7da; color: #721c24;">
+                    <h5 class="modal-title">
+                        <i class="fas fa-exclamation-triangle me-2"></i>确认删除
+                    </h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
