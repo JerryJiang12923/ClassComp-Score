@@ -95,30 +95,26 @@ def index():
         return redirect(url_for('admin'))
     
     # 根据用户班级自动确定应该评价的年级
+
     def get_target_grade(user_class):
         """根据评分链条确定目标年级：中预→初一→初二→中预, 高一↔高二, 高一VCE↔高二VCE"""
         if not user_class:
             return None
-            
+
         user_class = user_class.strip()
-        
-        # 判断用户年级
-        if user_class.startswith('中预'):
-            return '初一'  # 中预评初一
-        elif user_class.startswith('初一'):
-            return '初二'  # 初一评初二
-        elif user_class.startswith('初二'):
-            return '中预'  # 初二评中预
-        elif user_class.startswith('高一') and 'VCE' in user_class:
-            return '高二VCE'  # 高一VCE评高二VCE
-        elif user_class.startswith('高二') and 'VCE' in user_class:
-            return '高一VCE'  # 高二VCE评高一VCE
-        elif user_class.startswith('高一'):
-            return '高二'  # 高一评高二
-        elif user_class.startswith('高二'):
-            return '高一'  # 高二评高一
-        else:
-            return None
+        is_vce = 'VCE' in user_class
+        prefix = user_class[:2]  # 取前2字（'中预'/'初一'/'高一'等）
+
+        # 使用字典直接映射
+        grade_map = {
+            '中预': '初一',
+            '初一': '初二',
+            '初二': '中预',
+            '高一': '高二VCE' if is_vce else '高二',
+            '高二': '高一VCE' if is_vce else '高一',
+        }
+
+        return grade_map.get(prefix, None)  # 找不到则返回None
     
     target_grade = get_target_grade(current_user.class_name)
     
