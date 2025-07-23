@@ -20,13 +20,7 @@
             <div class="navbar-nav ms-auto">
                 {% if current_user.is_authenticated %}
                     <span class="navbar-text me-3">
-                        {% if current_user.is_admin() %}
-                            管理员: {{ current_user.username }}
-                        {% elif current_user.is_teacher() %}
-                            教师: {{ current_user.username }}
-                        {% else %}
-                            欢迎, {{ current_user.username }} ({{ current_user.class_name }})
-                        {% endif %}
+                        欢迎，{{ current_user.username }} ({{ current_user.class_name }})
                     </span>
                     <a class="nav-link" href="{{ url_for('my_scores') }}">
                         <i class="fas fa-history me-1"></i>我的评分

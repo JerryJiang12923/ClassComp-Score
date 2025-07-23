@@ -38,6 +38,18 @@ from models import User, Score
 from forms import LoginForm, RegistrationForm, ScoreForm
 from period_utils import get_current_semester_config, calculate_period_info
 
+
+def add_pangu_spacing(text):
+    """在中文和数字/字母之间添加空格"""
+    if not text:
+        return text
+    # 在中文和数字/字母之间添加空格
+    text = re.sub(r'([\u4e00-\u9fa5])([A-Za-z0-9])', r'\1 \2', text)
+    # 在数字/字母和中文之间添加空格
+    text = re.sub(r'([A-Za-z0-9])([\u4e00-\u9fa5])', r'\1 \2', text)
+    return text
+
+
 def get_db_placeholder():
     """获取数据库兼容的占位符"""
     db_url = os.getenv("DATABASE_URL", "sqlite:///classcomp.db")
@@ -772,7 +784,6 @@ def my_scores():
             
             if current_user.class_name and ('全校' in current_user.class_name or 'ALL' in current_user.class_name.upper()):
                 # 全校数据教师看所有年级班级的本周期评分完成情况
-                # 修复：基于学期配置中的活跃班级，而不是用户表中的所有班级
                 cursor = conn.cursor()
                 placeholder = get_db_placeholder()
                 db_url = os.getenv("DATABASE_URL", "sqlite:///classcomp.db")
@@ -786,7 +797,7 @@ def my_scores():
                 cursor.execute(f'''
                     SELECT
                         sc.class_name,
-                        MIN(sc.grade_name) as grade_name,
+                        sc.grade_name,
                         CASE WHEN COUNT(s.id) > 0 THEN 1 ELSE 0 END as has_scored_this_period,
                         COUNT(s.id) as score_count_this_period,
                         MAX(s.created_at) as latest_score_time
@@ -796,28 +807,51 @@ def my_scores():
                         AND {date_func} >= {placeholder}
                         AND {date_func} <= {placeholder}
                     WHERE sc.is_active = 1 AND sc.semester_id = (SELECT id FROM semester_config WHERE is_active = 1)
-                    GROUP BY sc.class_name
+                    GROUP BY sc.class_name, sc.grade_name
                     ORDER BY
-                        CASE MIN(sc.grade_name)
+                        CASE sc.grade_name
                             WHEN '中预' THEN 1
                             WHEN '初一' THEN 2
                             WHEN '初二' THEN 3
                             WHEN '高一' THEN 4
-                            WHEN '高二' THEN 5
-                            WHEN '高一VCE' THEN 6
+                            WHEN '高一VCE' THEN 5
+                            WHEN '高二' THEN 6
                             WHEN '高二VCE' THEN 7
                             ELSE 8
                         END,
                         sc.class_name
                 ''', (period_start.strftime('%Y-%m-%d'), period_end.strftime('%Y-%m-%d')))
-                class_status = cursor.fetchall()
-                return render_template('teacher_monitoring.html', 
-                                     class_status=class_status, 
-                                     user=current_user, 
+                
+                class_status_raw = cursor.fetchall()
+                
+                # 在后端处理显示逻辑
+                class_status = []
+                display_grades = set()
+                for item in class_status_raw:
+                    new_item = dict(item)
+                    new_item['class_name'] = add_pangu_spacing(new_item['class_name'])
+                    grade_name = new_item['grade_name']
+                    if 'VCE' in grade_name:
+                        display_grade = grade_name.replace('VCE', '')
+                    else:
+                        display_grade = grade_name
+                    
+                    new_item['display_grade'] = display_grade
+                    class_status.append(new_item)
+                    display_grades.add(display_grade)
+                
+                # 排序显示年级
+                sorted_display_grades = sorted(list(display_grades), key=lambda g: ['中预', '初一', '初二', '高一', '高二'].index(g) if g in ['中预', '初一', '初二', '高一', '高二'] else 99)
+
+                return render_template('teacher_monitoring.html',
+                                     class_status=class_status,
+                                     user=current_user,
                                      is_school_wide=True,
                                      current_period=period_number + 1,
                                      period_start=period_start,
-                                     period_end=period_end)
+                                     period_end=period_end,
+                                     all_grades=sorted_display_grades,
+                                     selected_grade='all')
             else:
                 # 普通教师查看本年级班级本周期评分完成情况
                 teacher_grade = None
@@ -884,11 +918,18 @@ def my_scores():
                         END,
                         sc.class_name
                 ''', [period_start.strftime('%Y-%m-%d'), period_end.strftime('%Y-%m-%d')] + teacher_grades)
-                class_status = cursor.fetchall()
-                return render_template('teacher_monitoring.html', 
-                                     class_status=class_status, 
-                                     user=current_user, 
-                                     is_school_wide=False, 
+                class_status_raw = cursor.fetchall()
+                
+                class_status = []
+                for item in class_status_raw:
+                    new_item = dict(item)
+                    new_item['class_name'] = add_pangu_spacing(new_item['class_name'])
+                    class_status.append(new_item)
+
+                return render_template('teacher_monitoring.html',
+                                     class_status=class_status,
+                                     user=current_user,
+                                     is_school_wide=False,
                                      teacher_grade=teacher_grade,
                                      current_period=period_number + 1,
                                      period_start=period_start,

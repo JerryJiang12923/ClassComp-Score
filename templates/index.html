@@ -33,7 +33,7 @@
       </a>
       <div class="navbar-nav ms-auto">
         <span class="navbar-text me-3">
-          欢迎, {{ user.username }} ({{ user.class_name }})
+          欢迎，{{ user.username }} ({{ user.class_name }})
         </span>
         <a class="nav-link" href="{{ url_for('my_scores') }}">
           <i class="fas fa-history me-1"></i>我的评分
@@ -70,7 +70,7 @@
                     {% if current_period %}
                     <p class="mb-0 text-muted">
                         <i class="fas fa-calendar-week me-1"></i>
-                        <span id="current-period-info">第{{ current_period.number }}周期 ({{ current_period.start }} - {{ current_period.end }})</span>
+                        <span id="current-period-info">第 {{ current_period.number }} 周期 ({{ current_period.start }} - {{ current_period.end }})</span>
                     </p>
                     {% else %}
                     <p class="mb-0 text-muted">
@@ -187,7 +187,7 @@
               
               // 显示当前周期信息
               if (currentPeriodInfo) {
-                const periodText = `第${currentPeriodInfo.number}周期 (${currentPeriodInfo.start} - ${currentPeriodInfo.end})`;
+                const periodText = `第 ${currentPeriodInfo.number} 周期 (${currentPeriodInfo.start} - ${currentPeriodInfo.end})`;
                 $('#current-period-info').text(periodText);
               }
               

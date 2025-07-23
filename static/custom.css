@@ -209,3 +209,61 @@ body {
  * 可以在这里添加，但这部分应尽可能少用，以保持一致性。
  * 例如: .admin-page-specific-style { ... }
  */
+
+.monitoring-card .card-title {
+    font-size: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.monitoring-card .badge-custom {
+    font-size: 0.7em;
+    padding: 0.3em 0.6em;
+}
+
+.monitoring-card .text-center .col-6 > div:first-child {
+    margin-bottom: 0.1rem !important;
+}
+
+.monitoring-card .fs-4 {
+    font-size: 1.4rem !important;
+    line-height: 1.1;
+}
+
+.monitoring-card .fs-6 {
+    font-size: 0.85rem !important;
+}
+
+.monitoring-card small.text-muted {
+    font-size: 0.75rem;
+}
+
+.monitoring-card .progress {
+    height: 5px !important;
+}
+
+/* Fix for monitoring card stats alignment and spacing */
+.monitoring-card-stats {
+    align-items: baseline; /* Vertically align the content of the columns */
+}
+
+.monitoring-card-stats .col-6 > div {
+    margin-bottom: 0; /* Remove bottom margin from the container div */
+}
+
+.monitoring-card-stats .fs-4,
+.monitoring-card-stats .fs-6 {
+    margin-bottom: 0; /* Remove bottom margin from the number/date */
+    line-height: 1; /* Set line-height to 1 to remove extra space */
+}
+
+.monitoring-card-stats small.text-muted {
+    margin-top: 0.1rem; /* Add a tiny bit of space above the description */
+    display: block;
+}
+
+/* Style for the active status filter card */
+.stats-card.status-filter-active {
+    background-color: #e9ecef; /* A slightly darker background like a hover state */
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15); /* More pronounced shadow */
+    transform: translateY(-2px);
+}

@@ -16,7 +16,7 @@
                 信息委员评分系统
             </a>
             <div class="navbar-nav ms-auto">
-                <span class="navbar-text me-3">欢迎, {{ user.username }} ({{ user.class_name }})</span>
+                <span class="navbar-text me-3">欢迎，{{ user.username }} ({{ user.class_name }})</span>
                 <a class="nav-link" href="{{ url_for('admin') }}">
                     <i class="fas fa-chart-line me-1"></i>数据面板
                 </a>
@@ -33,15 +33,15 @@
                 <h2 class="mb-4">
                     <i class="fas fa-tasks me-2"></i>
                     {% if is_school_wide %}
-                        全校班级第{{ current_period }}周期评分完成情况
+                        全校班级第 {{ current_period }} 周期评分完成情况
                     {% else %}
-                        {{ teacher_grade }}年级第{{ current_period }}周期评分完成情况
+                        {{ teacher_grade }}年级第 {{ current_period }} 周期评分完成情况
                     {% endif %}
                 </h2>
                 
                 <div class="alert alert-info mb-4">
                     <i class="fas fa-info-circle me-2"></i>
-                    <strong>当前周期：</strong>第{{ current_period }}周期 ({{ period_start }} 至 {{ period_end }})
+                    <strong>当前周期：</strong>第 {{ current_period }} 周期 ({{ period_start }} 至 {{ period_end }})
                     <br>
                     <strong>监测说明：</strong>显示各班级在当前评分周期内的任务完成情况，帮助您督促未完成的班级。
                 </div>
@@ -53,33 +53,33 @@
                     {% set pending_classes = total_classes - completed_classes %}
                     
                     <div class="col-md-4">
-                        <div class="stats-card">
+                        <div class="stats-card status-filter-btn" data-status="all">
                             <div class="d-flex align-items-center">
                                 <div class="me-3"><i class="fas fa-users fa-2x"></i></div>
                                 <div>
-                                    <h4>{{ total_classes }}</h4>
+                                    <h4 id="total-count">{{ total_classes }}</h4>
                                     <p class="mb-0">总班级数</p>
                                 </div>
                             </div>
                         </div>
                     </div>
                     <div class="col-md-4">
-                        <div class="stats-card">
+                        <div class="stats-card status-filter-btn" data-status="completed">
                             <div class="d-flex align-items-center">
                                 <div class="me-3"><i class="fas fa-check-circle fa-2x" style="color: #28a745;"></i></div>
                                 <div>
-                                    <h4>{{ completed_classes }}</h4>
+                                    <h4 id="completed-count">{{ completed_classes }}</h4>
                                     <p class="mb-0">已完成评分</p>
                                 </div>
                             </div>
                         </div>
                     </div>
                     <div class="col-md-4">
-                        <div class="stats-card">
+                        <div class="stats-card status-filter-btn" data-status="pending">
                             <div class="d-flex align-items-center">
                                 <div class="me-3"><i class="fas fa-times-circle fa-2x" style="color: #e74a3b;"></i></div>
                                 <div>
-                                    <h4>{{ pending_classes }}</h4>
+                                    <h4 id="pending-count">{{ pending_classes }}</h4>
                                     <p class="mb-0">待完成评分</p>
                                 </div>
                             </div>
@@ -87,15 +87,28 @@
                     </div>
                 </div>
 
+                <!-- 年级筛选器 -->
+                {% if is_school_wide and all_grades %}
+                <div class="mb-4 text-center">
+                    <div class="btn-group" role="group" aria-label="年级筛选">
+                        <button type="button" class="btn btn-outline-primary grade-filter-btn active" data-grade="all">全部</button>
+                        {% for grade in all_grades %}
+                        <button type="button" class="btn btn-outline-primary grade-filter-btn" data-grade="{{ grade }}">{{ grade }}</button>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+
                 <!-- 班级详细情况 -->
-                <div class="row">
+                <div class="row" id="class-cards-container">
                     {% for class_info in class_status %}
                     {% set has_completed = class_info.has_scored_this_period == 1 %}
                     {% set score_count = class_info.score_count_this_period or 0 %}
                     {% set card_class = 'status-active' if has_completed else 'status-inactive' %}
+                    {% set card_status = 'completed' if has_completed else 'pending' %}
                     
-                    <div class="col-lg-6 col-xl-4 mb-3">
-                        <div class="card card-custom {{ card_class }}">
+                    <div class="col-sm-6 col-md-4 col-lg-3 mb-3 class-card-wrapper" data-grade="{{ class_info.display_grade }}" data-status="{{ card_status }}">
+                        <div class="card card-custom monitoring-card {{ card_class }}">
                             <div class="card-body">
                                 <div class="d-flex justify-content-between align-items-start mb-2">
                                     <h5 class="card-title mb-0">
@@ -112,15 +125,15 @@
                                     {% endif %}
                                 </div>
                                 
-                                <div class="row text-center">
+                                <div class="row text-center monitoring-card-stats">
                                     <div class="col-6">
-                                        <div class="mb-2">
+                                        <div>
                                             <strong class="fs-4 text-primary">{{ score_count }}</strong>
                                         </div>
                                         <small class="text-muted">本周期评分</small>
                                     </div>
                                     <div class="col-6">
-                                        <div class="mb-2">
+                                        <div>
                                             {% if class_info.latest_score_time %}
                                                 <strong class="fs-6 text-success">{{ class_info.latest_score_time | format_datetime('%Y-%m-%d') }}</strong>
                                             {% else %}
@@ -174,5 +187,109 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const gradeFilterButtons = document.querySelectorAll('.grade-filter-btn');
+            const statusFilterButtons = document.querySelectorAll('.status-filter-btn');
+            const classCards = document.querySelectorAll('.class-card-wrapper');
+            
+            const totalCountEl = document.getElementById('total-count');
+            const completedCountEl = document.getElementById('completed-count');
+            const pendingCountEl = document.getElementById('pending-count');
+
+            let currentGrade = 'all';
+            let currentStatus = 'all';
+
+            function updateView() {
+                let visibleCards = 0;
+                let completedCount = 0;
+                let pendingCount = 0;
+
+                classCards.forEach(card => {
+                    const cardGrade = card.getAttribute('data-grade');
+                    const cardStatus = card.getAttribute('data-status');
+
+                    const gradeMatch = (currentGrade === 'all' || cardGrade === currentGrade);
+                    const statusMatch = (currentStatus === 'all' || cardStatus === currentStatus);
+
+                    if (gradeMatch && statusMatch) {
+                        card.style.display = '';
+                        visibleCards++;
+                        if (cardStatus === 'completed') {
+                            completedCount++;
+                        } else {
+                            pendingCount++;
+                        }
+                    } else {
+                        card.style.display = 'none';
+                    }
+                });
+                
+                // Update summary counts based on the currently selected *grade*
+                let gradeTotal = 0;
+                let gradeCompleted = 0;
+                let gradePending = 0;
+
+                classCards.forEach(card => {
+                    const cardGrade = card.getAttribute('data-grade');
+                    const cardStatus = card.getAttribute('data-status');
+                    if (currentGrade === 'all' || cardGrade === currentGrade) {
+                        gradeTotal++;
+                        if (cardStatus === 'completed') {
+                            gradeCompleted++;
+                        } else {
+                            gradePending++;
+                        }
+                    }
+                });
+
+                totalCountEl.textContent = gradeTotal;
+                completedCountEl.textContent = gradeCompleted;
+                pendingCountEl.textContent = gradePending;
+            }
+
+            gradeFilterButtons.forEach(button => {
+                button.addEventListener('click', function () {
+                    gradeFilterButtons.forEach(btn => btn.classList.remove('active'));
+                    this.classList.add('active');
+                    currentGrade = this.getAttribute('data-grade');
+                    updateView();
+                });
+            });
+
+            statusFilterButtons.forEach(button => {
+                button.addEventListener('click', function () {
+                    // Toggle active class for status filters
+                    statusFilterButtons.forEach(btn => btn.classList.remove('status-filter-active'));
+                    this.classList.add('status-filter-active');
+                    currentStatus = this.getAttribute('data-status');
+                    updateView();
+                });
+            });
+
+            // Initial view
+            updateView();
+
+            // Add keyboard navigation for grades
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                    e.preventDefault(); // Prevent page scrolling
+                    
+                    const currentActiveButton = document.querySelector('.grade-filter-btn.active');
+                    const buttons = Array.from(gradeFilterButtons);
+                    const currentIndex = buttons.indexOf(currentActiveButton);
+                    let nextIndex;
+
+                    if (e.key === 'ArrowLeft') {
+                        nextIndex = (currentIndex - 1 + buttons.length) % buttons.length;
+                    } else { // ArrowRight
+                        nextIndex = (currentIndex + 1) % buttons.length;
+                    }
+                    
+                    buttons[nextIndex].click();
+                }
+            });
+        });
+    </script>
 </body>
 </html>
