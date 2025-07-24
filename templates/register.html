@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>注册 - 信息委员评分系统</title>
+    <title>学生注册 - 信息委员评分系统</title>
     <link href="{{ url_for('static', filename='bootstrap.min.css') }}" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="{{ url_for('static', filename='custom.css') }}" rel="stylesheet">
@@ -17,131 +17,231 @@
         }
         .register-card {
             width: 100%;
-            max-width: 450px;
+            max-width: 400px;
+            overflow: hidden; /* 隐藏步骤切换时的溢出 */
+        }
+        .form-step {
+            display: none;
+            transition: opacity 0.3s ease-in-out;
+        }
+        .form-step.active {
+            display: block;
+        }
+        .spinner-border-sm {
+            width: 1rem;
+            height: 1rem;
+            border-width: .2em;
         }
     </style>
 </head>
 <body>
     <div class="card card-custom register-card">
-        <div class="card-header card-header-custom text-center">
+        <div class="card-header card-header-custom text-center p-4">
             <h3 class="mb-0">
-                <i class="fas fa-user-plus me-2"></i>
-                注册新账户
+                <i class="fas fa-user-shield me-2"></i>
+                <span id="header-title">信息委员注册</span>
             </h3>
-            <p class="mb-0 text-muted">加入信息委员评分系统</p>
+            <p class="mb-0 text-muted" id="header-subtitle">请使用管理员下发的初始密码完成注册</p>
         </div>
         
         <div class="card-body p-4">
+            {% if reason == 'initial_login' %}
+            <div class="alert alert-primary small" role="alert">
+                <h5 class="alert-heading fs-6">
+                    <i class="fas fa-info-circle me-2"></i>首次登录需要注册
+                </h5>
+                <p class="mb-2">欢迎使用！为了激活账户并确保安全，请完成以下注册步骤。</p>
+                <hr class="my-2">
+                <p class="mb-0">您需要设置真实姓名并重置密码。</p>
+            </div>
+            {% endif %}
+
+            <div id="alert-container">
             {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
                     {% for category, message in messages %}
-                        <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+                        <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show mt-3" role="alert">
                             {{ message }}
                             <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                         </div>
                     {% endfor %}
                 {% endif %}
             {% endwith %}
+            </div>
             
-            <form method="POST" novalidate>
+            <form id="registrationForm" method="POST" action="{{ url_for('register') }}" novalidate>
                 {{ form.hidden_tag() }}
                 
-                <div class="mb-3">
-                    {{ form.username.label(class="form-label") }}
-                    <div class="input-group">
-                        <span class="input-group-text">
-                            <i class="fas fa-user"></i>
-                        </span>
-                        {{ form.username(class="form-control" + (" is-invalid" if form.username.errors else ""), placeholder="请输入用户名") }}
-                        {% if form.username.errors %}
-                            <div class="invalid-feedback">
-                                {% for error in form.username.errors %}
-                                    {{ error }}
-                                {% endfor %}
-                            </div>
-                        {% endif %}
+                <!-- Step 1: Class and Initial Password -->
+                <div id="step1" class="form-step active">
+                    <div class="mb-3">
+                        {{ form.class_name.label(class="form-label") }}
+                        {{ form.class_name(class="form-select" + (" is-invalid" if form.class_name.errors else "")) }}
+                        <div class="invalid-feedback" id="class_name-errors"></div>
                     </div>
-                </div>
-                
-                <div class="mb-3">
-                    {{ form.email.label(class="form-label") }}
-                    <div class="input-group">
-                        <span class="input-group-text">
-                            <i class="fas fa-envelope"></i>
-                        </span>
-                        {{ form.email(class="form-control" + (" is-invalid" if form.email.errors else ""), placeholder="请输入邮箱地址") }}
-                        {% if form.email.errors %}
-                            <div class="invalid-feedback">
-                                {% for error in form.email.errors %}
-                                    {{ error }}
-                                {% endfor %}
-                            </div>
-                        {% endif %}
-                    </div>
-                </div>
-                
-                <div class="mb-3">
-                    {{ form.class_name.label(class="form-label") }}
-                    {{ form.class_name(class="form-select" + (" is-invalid" if form.class_name.errors else "")) }}
-                    {% if form.class_name.errors %}
-                        <div class="invalid-feedback">
-                            {% for error in form.class_name.errors %}
-                                {{ error }}
-                            {% endfor %}
+                    <div class="mb-3">
+                        {{ form.initial_password.label(class="form-label") }}
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="fas fa-key"></i></span>
+                            {{ form.initial_password(class="form-control", placeholder="管理员下发的初始密码") }}
+                            <div class="invalid-feedback" id="initial_password-errors"></div>
                         </div>
-                    {% endif %}
+                    </div>
+                    <button type="button" id="nextStepBtn" class="btn btn-primary-custom w-100">
+                        下一步 <i class="fas fa-arrow-right ms-2"></i>
+                    </button>
                 </div>
-                
-                <div class="mb-3">
-                    {{ form.password.label(class="form-label") }}
-                    <div class="input-group">
-                        <span class="input-group-text">
-                            <i class="fas fa-lock"></i>
-                        </span>
-                        {{ form.password(class="form-control" + (" is-invalid" if form.password.errors else ""), placeholder="请输入密码") }}
-                        {% if form.password.errors %}
-                            <div class="invalid-feedback">
-                                {% for error in form.password.errors %}
-                                    {{ error }}
-                                {% endfor %}
-                            </div>
-                        {% endif %}
+
+                <!-- Step 2: Set New Password and Real Name -->
+                <div id="step2" class="form-step">
+                    <div class="alert alert-info small">
+                        <i class="fas fa-info-circle me-2"></i>
+                        验证成功！您的用户名为: <strong id="display-username"></strong>
+                    </div>
+                    
+                    <div class="mb-3">
+                        {{ form.real_name.label(class="form-label") }}
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="fas fa-address-card"></i></span>
+                            {{ form.real_name(class="form-control", placeholder="请输入您的真实姓名") }}
+                            <div class="invalid-feedback" id="real_name-errors"></div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        {{ form.new_password.label(class="form-label") }}
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="fas fa-lock"></i></span>
+                            {{ form.new_password(class="form-control", placeholder="设置您的新密码") }}
+                            <div class="invalid-feedback" id="new_password-errors"></div>
+                        </div>
+                    </div>
+                    <div class="mb-4">
+                        {{ form.confirm_password.label(class="form-label") }}
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="fas fa-lock"></i></span>
+                            {{ form.confirm_password(class="form-control", placeholder="请再次输入新密码") }}
+                            <div class="invalid-feedback" id="confirm_password-errors"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between">
+                        <button type="button" id="prevStepBtn" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left me-2"></i> 上一步
+                        </button>
+                        <button type="submit" class="btn btn-primary-custom">
+                            完成注册 <i class="fas fa-check-circle ms-2"></i>
+                        </button>
                     </div>
                 </div>
-                
-                <div class="mb-4">
-                    {{ form.confirm_password.label(class="form-label") }}
-                    <div class="input-group">
-                        <span class="input-group-text">
-                            <i class="fas fa-lock"></i>
-                        </span>
-                        {{ form.confirm_password(class="form-control" + (" is-invalid" if form.confirm_password.errors else ""), placeholder="请再次输入密码") }}
-                        {% if form.confirm_password.errors %}
-                            <div class="invalid-feedback">
-                                {% for error in form.confirm_password.errors %}
-                                    {{ error }}
-                                {% endfor %}
-                            </div>
-                        {% endif %}
-                    </div>
-                </div>
-                
-                <button type="submit" class="btn btn-primary-custom w-100 py-2 fs-6">
-                    <i class="fas fa-user-plus me-2"></i>
-                    注册
-                </button>
             </form>
             
             <div class="text-center mt-3">
-                <p class="mb-2">已有账户？</p>
-                <a href="{{ url_for('login') }}" class="text-decoration-none">
-                    <i class="fas fa-sign-in-alt me-1"></i>
-                    立即登录
-                </a>
+                <p class="mb-0">
+                    <span class="text-muted me-2">注册过了？</span>
+                    <a href="{{ url_for('login') }}" class="text-decoration-none">
+                        <i class="fas fa-sign-in-alt me-1"></i>
+                        立即登录
+                    </a>
+                </p>
             </div>
         </div>
     </div>
 
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            const step1 = $('#step1');
+            const step2 = $('#step2');
+            const nextBtn = $('#nextStepBtn');
+            const prevBtn = $('#prevStepBtn');
+            const form = $('#registrationForm');
+            const alertContainer = $('#alert-container');
+
+            // Store step 1 data
+            let step1Data = {};
+
+            function showAlert(message, category = 'danger') {
+                const alertHtml = `
+                    <div class="alert alert-${category} alert-dismissible fade show" role="alert">
+                        ${message}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>`;
+                alertContainer.html(alertHtml);
+            }
+
+            function clearErrors() {
+                $('.is-invalid').removeClass('is-invalid');
+                $('.invalid-feedback').text('');
+                alertContainer.html('');
+            }
+
+            function handleNextStep() {
+                clearErrors();
+                const btnOriginalText = nextBtn.html();
+                nextBtn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 验证中...');
+
+                step1Data.class_name = $('#class_name').val();
+                step1Data.initial_password = $('#initial_password').val();
+
+                $.ajax({
+                    url: "{{ url_for('validate_initial_password') }}",
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify(step1Data),
+                    success: function(res) {
+                        if (res.success) {
+                            $('#display-username').text(res.username);
+                            step1.removeClass('active');
+                            step2.addClass('active');
+                            $('#header-title').text('设置新密码');
+                            $('#header-subtitle').text('请完成最后一步以激活您的账户');
+                        } else {
+                            showAlert(res.message || '验证失败，请重试。');
+                        }
+                    },
+                    error: function(xhr) {
+                        const errorMsg = xhr.responseJSON ? xhr.responseJSON.message : '网络错误，请稍后重试。';
+                        showAlert(errorMsg);
+                    },
+                    complete: function() {
+                        nextBtn.prop('disabled', false).html(btnOriginalText);
+                    }
+                });
+            }
+
+            nextBtn.on('click', handleNextStep);
+            $('#initial_password').on('keypress', function(e) {
+                if (e.which === 13) { // Enter key
+                    e.preventDefault();
+                    handleNextStep();
+                }
+            });
+
+            prevBtn.on('click', function() {
+                clearErrors();
+                step2.removeClass('active');
+                step1.addClass('active');
+                $('#header-title').text('信息委员注册');
+                $('#header-subtitle').text('请使用管理员下发的初始密码完成注册');
+            });
+
+            form.on('submit', function(e) {
+                // Before submitting, add step 1 data as hidden inputs
+                // This ensures the backend receives all necessary data securely
+                $('<input>').attr({
+                    type: 'hidden',
+                    name: 'class_name',
+                    value: step1Data.class_name
+                }).appendTo(form);
+                
+                $('<input>').attr({
+                    type: 'hidden',
+                    name: 'initial_password',
+                    value: step1Data.initial_password
+                }).appendTo(form);
+            });
+        });
+    </script>
 </body>
 </html>

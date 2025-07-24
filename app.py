@@ -34,8 +34,8 @@ def sanitize_teacher_grade(teacher_grade):
 
 
 from db import get_conn, put_conn
-from models import User, Score
-from forms import LoginForm, RegistrationForm, ScoreForm
+from models import User, Score, UserRealName
+from forms import LoginForm, InfoCommitteeRegistrationForm, ScoreForm
 from period_utils import get_current_semester_config, calculate_period_info
 
 
@@ -146,8 +146,12 @@ def index():
         print(f"Error: {e}")
         current_period = None
     
-    return render_template('index.html', 
-                          user=current_user, 
+    # 从 session 获取真实姓名，提高效率
+    real_name = session.get('real_name', current_user.username)
+
+    return render_template('index.html',
+                          user=current_user,
+                          real_name=real_name,
                           auto_target_grade=target_grade,
                           current_period=current_period)
 
@@ -165,6 +169,21 @@ def login():
             user = User.get_user_by_username(form.username.data, conn)
             if user and user.check_password(form.password.data):
                 login_user(user, remember=form.remember_me.data)
+                
+                # 登录成功后，检查是否需要注册真实姓名
+                if user.role == 'student':
+                    real_name = UserRealName.get_real_name_by_username(user.username, conn)
+                    if not real_name:
+                        # 用户需要注册，先将其登出，然后重定向到注册页面
+                        # 并通过URL参数告知注册页面原因，这种方式比flash更可靠
+                        logout_user()
+                        return redirect(url_for('register', reason='initial_login'))
+                    # 如果已注册，将真实姓名存入session
+                    session['real_name'] = real_name
+                else:
+                    # 非学生用户，使用用户名作为显示名
+                    session['real_name'] = user.username
+
                 next_page = request.args.get('next')
                 return redirect(next_page or url_for('index'))
             else:
@@ -180,6 +199,88 @@ def login():
 def logout():
     logout_user()
     return redirect(url_for('login'))
+
+@app.route('/register', methods=['GET', 'POST'])
+@security_middleware.rate_limit(max_requests=20, window=300) # 5分钟最多20次尝试
+def register():
+    if current_user.is_authenticated:
+        return redirect(url_for('index'))
+    
+    reason = request.args.get('reason')
+    form = InfoCommitteeRegistrationForm()
+    if form.validate_on_submit():
+        conn = get_conn()
+        try:
+            # 1. 根据班级找到对应的学生用户
+            cur = conn.cursor()
+            placeholder = get_db_placeholder()
+            cur.execute(f"SELECT * FROM users WHERE class_name = {placeholder} AND role = 'student'", (form.class_name.data,))
+            user_data = cur.fetchone()
+
+            if not user_data:
+                flash('未找到该班级的学生账户，请联系管理员。', 'error')
+                return render_template('register.html', form=form, reason=reason)
+
+            user = User(user_data['id'], user_data['username'], user_data['role'], user_data['class_name'])
+            user.password_hash = user_data['password_hash']
+
+            # 2. 再次验证初始密码 (安全冗余)
+            if not user.check_password(form.initial_password.data):
+                flash('初始密码校验失败，请返回上一步重试。', 'error')
+                return render_template('register.html', form=form, reason=reason)
+
+            # 3. 更新密码
+            new_password_hash = generate_password_hash(form.new_password.data)
+            cur.execute(f"UPDATE users SET password_hash = {placeholder} WHERE id = {placeholder}", (new_password_hash, user.id))
+
+            # 4. 设置真实姓名
+            UserRealName.set_real_name(user.username, form.real_name.data, conn)
+            
+            conn.commit()
+
+            flash('注册成功！请使用新密码登录。', 'success')
+            return redirect(url_for('login'))
+
+        except Exception as e:
+            conn.rollback()
+            flash(f'注册过程中发生错误: {e}', 'error')
+        finally:
+            put_conn(conn)
+            
+    # 处理 initial_password.errors, class_name.errors 等
+    # 如果表单验证失败，错误会由WTForms自动填充到form对象中，并由模板渲染
+    return render_template('register.html', form=form, reason=reason)
+
+@app.route('/api/validate_initial_password', methods=['POST'])
+@security_middleware.rate_limit(max_requests=30, window=300) # 限制更严格一些
+def validate_initial_password():
+    data = request.get_json()
+    class_name = data.get('class_name')
+    initial_password = data.get('initial_password')
+
+    if not class_name or not initial_password:
+        return jsonify(success=False, message="缺少必要信息"), 400
+
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        placeholder = get_db_placeholder()
+        cur.execute(f"SELECT * FROM users WHERE class_name = {placeholder} AND role = 'student'", (class_name,))
+        user_data = cur.fetchone()
+
+        if not user_data:
+            return jsonify(success=False, message="未找到该班级的学生账户"), 404
+
+        user = User(user_data['id'], user_data['username'], user_data['role'], user_data['class_name'])
+        user.password_hash = user_data['password_hash']
+
+        if user.check_password(initial_password):
+            return jsonify(success=True, username=user.username)
+        else:
+            return jsonify(success=False, message="初始密码错误"), 401
+    finally:
+        put_conn(conn)
+
 
 @app.route('/admin/users', methods=['GET', 'POST'])
 @login_required
@@ -802,7 +903,6 @@ def my_scores():
                         COUNT(s.id) as score_count_this_period,
                         MAX(s.created_at) as latest_score_time
                     FROM semester_classes sc
-                    LEFT JOIN users u ON sc.class_name = u.class_name AND u.role = 'student'
                     LEFT JOIN scores s ON u.id = s.user_id
                         AND {date_func} >= {placeholder}
                         AND {date_func} <= {placeholder}
@@ -1351,7 +1451,7 @@ def export_excel():
                 if is_sqlite:
                     history_sql = f"""
                         SELECT 
-                            h.original_score_id, h.user_id, h.evaluator_name, h.evaluator_class,
+                            h.original_
                             h.target_grade, h.target_class, h.score1, h.score2, h.score3, h.total,
                             h.note, h.original_created_at as created_at, h.overwritten_at, h.overwritten_by_score_id
                         FROM scores_history h
@@ -1625,10 +1725,17 @@ def admin():
                 SELECT s.*, u.username, u.class_name as evaluator_class_name
                 FROM scores s 
                 JOIN users u ON s.user_id = u.id 
-                ORDER BY s.created_at DESC 
+                ORDER BY s.created_at DESC
                 LIMIT 300
             ''')
-        recent_scores = cur.fetchall()
+        recent_scores_raw = cur.fetchall()
+        
+        # 预处理时间戳，确保模板中可以使用strftime
+        recent_scores = []
+        for score in recent_scores_raw:
+            new_score = dict(score)
+            new_score['created_at'] = parse_database_timestamp(score['created_at'])
+            recent_scores.append(new_score)
         
         # 环境信息
         import sys
@@ -2001,7 +2108,9 @@ def admin():
                         GROUP BY {date_format}
                         ORDER BY date
                     ''')
-            daily_trend = cur.fetchall()
+            daily_trend_raw = cur.fetchall()
+            # 确保日期格式统一为 YYYY-MM-DD 字符串，便于前端处理
+            daily_trend = [{'date': row['date'], 'count': row['count']} for row in daily_trend_raw]
         except Exception as trend_error:
             print(f"每日趋势查询失败: {trend_error}")
             daily_trend = []  # 设置为空列表，避免页面崩溃

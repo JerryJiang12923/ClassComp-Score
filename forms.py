@@ -14,72 +14,48 @@ class LoginForm(FlaskForm):
     ])
     remember_me = BooleanField('记住我')
 
-class RegistrationForm(FlaskForm):
-    username = StringField('用户名', validators=[
-        DataRequired(message='请输入用户名'),
-        Length(min=2, max=20, message='用户名长度必须在2-20个字符之间')
+class InfoCommitteeRegistrationForm(FlaskForm):
+    class_name = SelectField('班级', validators=[DataRequired(message='请选择你的班级')])
+    
+    real_name = StringField('姓名', validators=[
+        DataRequired(message='请输入你的姓名'),
+        Length(min=2, max=10, message='姓名长度必须在2-10个字符之间')
     ])
-    email = StringField('邮箱', validators=[
-        DataRequired(message='请输入邮箱'),
-        Email(message='请输入有效的邮箱地址'),
-        Length(max=120, message='邮箱长度不能超过120个字符')
-    ])
-    password = PasswordField('密码', validators=[
-        DataRequired(message='请输入密码'),
-        Length(min=6, max=128, message='密码长度必须在6-128个字符之间')
-    ])
-    confirm_password = PasswordField('确认密码', validators=[
-        DataRequired(message='请确认密码'),
-        EqualTo('password', message='两次输入的密码不一致')
-    ])
-    class_name = SelectField('班级', choices=[
-        ('', '请选择班级'),
-        ('中预1班', '中预1班'),
-        ('中预2班', '中预2班'),
-        ('中预3班', '中预3班'),
-        ('中预4班', '中预4班'),
-        ('中预5班', '中预5班'),
-        ('中预6班', '中预6班'),
-        ('中预7班', '中预7班'),
-        ('中预8班', '中预8班'),
-        ('初一1班', '初一1班'),
-        ('初一2班', '初一2班'),
-        ('初一3班', '初一3班'),
-        ('初一4班', '初一4班'),
-        ('初一5班', '初一5班'),
-        ('初一6班', '初一6班'),
-        ('初一7班', '初一7班'),
-        ('初一8班', '初一8班'),
-        ('初二1班', '初二1班'),
-        ('初二2班', '初二2班'),
-        ('初二3班', '初二3班'),
-        ('初二4班', '初二4班'),
-        ('初二5班', '初二5班'),
-        ('初二6班', '初二6班'),
-        ('初二7班', '初二7班'),
-        ('初二8班', '初二8班'),
-        ('高一1班', '高一1班'),
-        ('高一2班', '高一2班'),
-        ('高一3班', '高一3班'),
-        ('高一4班', '高一4班'),
-        ('高一5班', '高一5班'),
-        ('高一6班', '高一6班'),
-        ('高二1班', '高二1班'),
-        ('高二2班', '高二2班'),
-        ('高二3班', '高二3班'),
-        ('高二4班', '高二4班'),
-        ('高二5班', '高二5班'),
-        ('高二6班', '高二6班'),
-        ('高二7班', '高二7班'),
-        ('高二8班', '高二8班'),
-        ('高一VCE', '高一VCE'),
-        ('高二VCE', '高二VCE'),
-        ('管理员', '管理员')
-    ], validators=[DataRequired(message='请选择班级')])
 
-    def validate_username(self, username):
-        if not re.match(r'^[a-zA-Z0-9_]+$', username.data):
-            raise ValidationError('用户名只能包含字母、数字和下划线')
+    initial_password = PasswordField('初始密码', validators=[
+        DataRequired(message='请输入管理员下发的初始密码'),
+        Length(min=6, max=128, message='密码长度不正确')
+    ])
+    
+    new_password = PasswordField('设置新密码', validators=[
+        DataRequired(message='请输入你的新密码'),
+        Length(min=6, max=128, message='新密码长度必须在6-128个字符之间')
+    ])
+    
+    confirm_password = PasswordField('确认新密码', validators=[
+        DataRequired(message='请再次输入新密码'),
+        EqualTo('new_password', message='两次输入的新密码不一致')
+    ])
+
+    def __init__(self, *args, **kwargs):
+        super(InfoCommitteeRegistrationForm, self).__init__(*args, **kwargs)
+        # 动态填充班级选项
+        from db import get_conn, put_conn
+        conn = get_conn()
+        try:
+            cur = conn.cursor()
+            # 只选择当前活跃学期中配置的班级
+            cur.execute("""
+                SELECT sc.class_name
+                FROM semester_classes sc
+                JOIN semester_config s ON sc.semester_id = s.id
+                WHERE s.is_active = 1 AND sc.is_active = 1
+                ORDER BY sc.grade_name, sc.class_name
+            """)
+            # 生成选项
+            self.class_name.choices = [('', '请选择班级')] + [(c['class_name'], c['class_name']) for c in cur.fetchall()]
+        finally:
+            put_conn(conn)
 
 class ScoreForm(FlaskForm):
     target_grade = SelectField('被查年级', choices=[

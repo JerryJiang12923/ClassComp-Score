@@ -72,6 +72,12 @@ class User(UserMixin):
         """检查是否为老师"""
         return self.role == 'teacher'
 
+    def get_real_name(self, conn):
+        """获取用户的真实姓名"""
+        if not hasattr(self, '_real_name'):
+            self._real_name = UserRealName.get_real_name_by_username(self.username, conn)
+        return self._real_name
+
 class Score:
     def __init__(self, id, user_id, evaluator_name, evaluator_class, 
                  target_grade, target_class, score1, score2, score3, 
@@ -150,35 +156,12 @@ class Score:
             
             # 如果在同一个评分周期内，需要归档旧记录
             if existing_period_end == period_end:
-                existing_id = existing_score['id']
-                
-                # 获取完整的旧记录信息
-                cur.execute(f"""
-                    SELECT * FROM scores WHERE id = {placeholder}
-                """, (existing_id,))
-                old_record = cur.fetchone()
-                
-                if old_record:
-                    # 归档到历史表
-                    cur.execute(f"""
-                        INSERT INTO scores_history 
-                        (original_score_id, user_id, evaluator_name, evaluator_class, 
-                         target_grade, target_class, score1, score2, score3, total, note, 
-                         original_created_at, overwritten_at, overwritten_by_score_id)
-                        VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, 
-                                {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder},
-                                {placeholder}, {placeholder}, {placeholder})
-                    """, (old_record['id'], old_record['user_id'], old_record['evaluator_name'], 
-                          old_record['evaluator_class'], old_record['target_grade'], old_record['target_class'],
-                          old_record['score1'], old_record['score2'], old_record['score3'], old_record['total'], 
-                          old_record['note'], old_record['created_at'], now, 0))  # overwritten_by_score_id将在插入新记录后更新
-                    
-                    # 删除旧记录
-                    cur.execute(f"""
-                        DELETE FROM scores WHERE id = {placeholder}
-                    """, (existing_id,))
-                    
+                success, error = Score.archive_score(existing_score['id'], conn)
+                if success:
                     overwrite_count += 1
+                else:
+                    # 如果归档失败，记录错误并跳过，以防影响新评分的提交
+                    print(f"归档失败 (score_id: {existing_score['id']}): {error}")
         
         total = score1 + score2 + score3
         created_at = now
@@ -223,6 +206,46 @@ class Score:
             return None, f"数据库错误: {str(e)}", 0
     
     @staticmethod
+    def archive_score(score_id, conn, overwritten_by_score_id=None):
+        """将单条评分记录归档到历史表，并从主表删除"""
+        cur = conn.cursor()
+        db_url = os.getenv("DATABASE_URL", "sqlite:///classcomp.db")
+        placeholder = "?" if db_url.startswith("sqlite") else "%s"
+        now = get_current_time()
+
+        try:
+            # 1. 查找要归档的记录
+            cur.execute(f"SELECT * FROM scores WHERE id = {placeholder}", (score_id,))
+            record_to_archive = cur.fetchone()
+
+            if not record_to_archive:
+                return False, "评分记录未找到"
+
+            # 2. 插入到历史表
+            cur.execute(f"""
+                INSERT INTO scores_history
+                (original_score_id, user_id, evaluator_name, evaluator_class,
+                 target_grade, target_class, score1, score2, score3, total, note,
+                 original_created_at, overwritten_at, overwritten_by_score_id)
+                VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder},
+                        {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder},
+                        {placeholder}, {placeholder}, {placeholder})
+            """, (record_to_archive['id'], record_to_archive['user_id'], record_to_archive['evaluator_name'],
+                  record_to_archive['evaluator_class'], record_to_archive['target_grade'], record_to_archive['target_class'],
+                  record_to_archive['score1'], record_to_archive['score2'], record_to_archive['score3'], record_to_archive['total'],
+                  record_to_archive['note'], record_to_archive['created_at'], now, overwritten_by_score_id or 0))
+
+            # 3. 从主表删除
+            cur.execute(f"DELETE FROM scores WHERE id = {placeholder}", (score_id,))
+            
+            # conn.commit() is handled by the calling function
+            return True, None
+        except Exception as e:
+            # conn.rollback() is handled by the calling function
+            return False, f"归档失败: {str(e)}"
+    
+    
+    @staticmethod
     def get_user_scores(user_id, conn, limit=50):
         """获取用户的评分历史"""
         cur = conn.cursor()
@@ -250,3 +273,49 @@ class Score:
             ORDER BY created_at DESC
         """, (start_date, end_date))
         return cur.fetchall()
+
+class UserRealName:
+    @staticmethod
+    def get_real_name_by_username(username, conn):
+        """根据用户名获取真实姓名"""
+        cur = conn.cursor()
+        db_url = os.getenv("DATABASE_URL", "sqlite:///classcomp.db")
+        placeholder = "?" if db_url.startswith("sqlite") else "%s"
+        
+        cur.execute(f"""
+            SELECT real_name FROM user_real_names WHERE username = {placeholder}
+        """, (username,))
+        row = cur.fetchone()
+        return row['real_name'] if row else None
+
+    @staticmethod
+    def set_real_name(username, real_name, conn):
+        """设置或更新用户的真实姓名"""
+        cur = conn.cursor()
+        db_url = os.getenv("DATABASE_URL", "sqlite:///classcomp.db")
+        placeholder = "?" if db_url.startswith("sqlite") else "%s"
+        
+        try:
+            # 使用UPSERT逻辑：如果username已存在则更新，否则插入
+            if db_url.startswith("sqlite"):
+                cur.execute(f"""
+                    INSERT INTO user_real_names (username, real_name, updated_at)
+                    VALUES ({placeholder}, {placeholder}, CURRENT_TIMESTAMP)
+                    ON CONFLICT(username) DO UPDATE SET
+                        real_name = excluded.real_name,
+                        updated_at = CURRENT_TIMESTAMP
+                """, (username, real_name))
+            else: # PostgreSQL
+                cur.execute(f"""
+                    INSERT INTO user_real_names (username, real_name)
+                    VALUES ({placeholder}, {placeholder})
+                    ON CONFLICT (username) DO UPDATE SET
+                        real_name = EXCLUDED.real_name,
+                        updated_at = CURRENT_TIMESTAMP
+                """, (username, real_name))
+            
+            conn.commit()
+            return True, None
+        except Exception as e:
+            conn.rollback()
+            return False, str(e)

@@ -62,7 +62,7 @@
                 <div>
                     <h5 class="mb-1">
                         <i class="fas fa-user me-2"></i>
-                        {{ user.username }}
+                        {{ real_name }}
                     </h5>
                     <p class="mb-0 text-muted">
                         班级: {{ user.class_name }} | 角色: {{ user.role }}
@@ -95,8 +95,8 @@
       <div class="card-body">
         <div class="row align-items-end">
           <div class="col-md-4">
-            <label class="form-label fw-bold mb-1">用户名</label>
-            <div class="form-control-plaintext">{{ user.username }}</div>
+            <label class="form-label fw-bold mb-1">姓名</label>
+            <div class="form-control-plaintext">{{ real_name }}</div>
           </div>
           <div class="col-md-4">
             <label class="form-label fw-bold mb-1">信息委员班级</label>
