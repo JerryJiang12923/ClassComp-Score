@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: classcomp-score
+    name: classcomp-score-beta
     env: python
     plan: free
     region: singapore
