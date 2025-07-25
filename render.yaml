@@ -27,5 +27,5 @@ services:
       - key: PORT
         fromService:
           type: web
-          name: classcomp-score
+          name: classcomp-score-beta
           property: port
