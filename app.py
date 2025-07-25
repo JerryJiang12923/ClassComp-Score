@@ -868,7 +868,7 @@ def my_scores():
                 ORDER BY s.created_at DESC
             ''')
             scores = cursor.fetchall()
-            return render_template('simple_my_scores.html', scores=scores, user=current_user)
+            return render_template('admin_scores.html', scores=scores, user=current_user)
         elif current_user.is_teacher():
             # 教师查看本年级班级本周期评分完成情况
             # 使用学期配置计算当前周期
@@ -1047,21 +1047,31 @@ def api_my_scores():
     """获取个人评分历史API"""
     conn = get_conn()
     try:
-        limit = request.args.get('limit', 50, type=int)
-        scores = Score.get_user_scores(current_user.id, conn, limit)
+        limit = request.args.get('limit', 2000, type=int)
         
+        scores = []
+        if current_user.is_admin():
+            # 管理员获取所有评分
+            cur = conn.cursor()
+            placeholder = get_db_placeholder()
+            cur.execute(f'''
+                SELECT s.*, u.username, u.class_name as evaluator_class
+                FROM scores s
+                JOIN users u ON s.user_id = u.id
+                ORDER BY s.created_at DESC
+                LIMIT {placeholder}
+            ''', (limit,))
+            scores = cur.fetchall()
+        else:
+            # 普通用户获取自己的评分
+            scores = Score.get_user_scores(current_user.id, conn, limit)
+
         # 转换为JSON格式
         score_list = []
         for score in scores:
-            # Handle both datetime objects and string formats
-            created_at = score['created_at']
-            if hasattr(created_at, 'strftime'):
-                created_str = created_at.strftime('%Y-%m-%d %H:%M:%S')
-            else:
-                created_str = str(created_at)
-                
             score_list.append({
                 'id': score['id'],
+                'evaluator_name': score.get('username') or score.get('evaluator_name'),
                 'evaluator_class': score['evaluator_class'],
                 'target_grade': score['target_grade'],
                 'target_class': score['target_class'],
@@ -1070,10 +1080,78 @@ def api_my_scores():
                 'score3': score['score3'],
                 'total': score['total'],
                 'note': score['note'],
-                'created_at': created_str
+                'created_at': format_datetime_for_display(score['created_at'])
             })
         
-        return jsonify(success=True, scores=score_list)
+        # 获取周期信息用于筛选
+        try:
+            config_data = get_current_semester_config(conn)
+            if config_data:
+                current_period_info = calculate_period_info(semester_config=config_data['semester'])
+                previous_period_info = calculate_period_info(target_date=current_period_info['period_start'] - timedelta(days=1), semester_config=config_data['semester'])
+                period_data = {
+                    'current': {
+                        'start': current_period_info['period_start'].strftime('%Y-%m-%d'),
+                        'end': current_period_info['period_end'].strftime('%Y-%m-%d')
+                    }
+                }
+                # 只有当上一周期的开始时间早于本周期时，才认为它是有效的
+                if previous_period_info['period_start'] < current_period_info['period_start']:
+                    period_data['previous'] = {
+                        'start': previous_period_info['period_start'].strftime('%Y-%m-%d'),
+                        'end': previous_period_info['period_end'].strftime('%Y-%m-%d')
+                    }
+            else:
+                period_data = None
+        except Exception:
+            period_data = None
+
+        return jsonify(success=True, scores=score_list, periods=period_data)
+    finally:
+        put_conn(conn)
+
+@app.route('/api/scores/bulk_action', methods=['POST'])
+@login_required
+def bulk_action_scores():
+    """处理评分的批量操作（归档、删除等）"""
+    if not current_user.is_admin():
+        return jsonify(success=False, message="权限不足"), 403
+
+    data = request.get_json()
+    action = data.get('action')
+    score_ids = data.get('score_ids')
+
+    if not action or not score_ids:
+        return jsonify(success=False, message="缺少必要参数"), 400
+
+    conn = get_conn()
+    try:
+        if action == 'archive':
+            # 批量归档逻辑
+            archived_count = 0
+            for score_id in score_ids:
+                success = Score.archive_score(score_id, conn)
+                if success:
+                    archived_count += 1
+            conn.commit()
+            return jsonify(success=True, message=f"成功归档 {archived_count} 条记录")
+        
+        elif action == 'delete':
+            # 批量删除逻辑
+            placeholder = get_db_placeholder()
+            placeholders = ','.join([placeholder for _ in score_ids])
+            cur = conn.cursor()
+            cur.execute(f"DELETE FROM scores WHERE id IN ({placeholders})", score_ids)
+            deleted_count = cur.rowcount
+            conn.commit()
+            return jsonify(success=True, message=f"成功删除 {deleted_count} 条记录")
+            
+        else:
+            return jsonify(success=False, message="无效的操作"), 400
+            
+    except Exception as e:
+        conn.rollback()
+        return jsonify(success=False, message=f"操作失败: {str(e)}"), 500
     finally:
         put_conn(conn)
 

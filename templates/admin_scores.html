@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>评分管理 - 信息委员评分系统</title>
+    <link href="{{ url_for('static', filename='bootstrap.min.css') }}" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://cdn.datatables.net/1.11.5/css/dataTables.bootstrap5.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='custom.css') }}" rel="stylesheet">
+    <style>
+        @media (max-width: 768px) {
+            .mobile-date { font-size: 0.75rem; }
+            .table-responsive-mobile {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+            #scoresTable thead th.sortable {
+                padding-right: 1.5rem; /* 为排序箭头增加空间 */
+            }
+        }
+        #scoresTable thead th {
+            white-space: nowrap;
+        }
+        .dataTables_filter {
+            display: none; /* 隐藏默认的搜索框 */
+        }
+    </style>
+</head>
+<body id="admin-scores-page">
+    <!-- 导航栏 -->
+    <nav class="navbar navbar-expand-lg navbar-light navbar-custom">
+        <div class="container">
+            <a class="navbar-brand" href="{{ url_for('index') }}">
+                <i class="fas fa-clipboard-check me-2"></i>
+                信息委员评分系统
+            </a>
+            <div class="navbar-nav ms-auto">
+                <span class="navbar-text me-3">
+                    欢迎，{{ user.username }} ({{ user.class_name }})
+                </span>
+                <a class="nav-link" href="{{ url_for('index') }}">
+                    <i class="fas fa-home me-1"></i>返回首页
+                </a>
+                <a class="nav-link" href="{{ url_for('admin') }}">
+                    <i class="fas fa-cog me-1"></i>管理面板
+                </a>
+                <a class="nav-link" href="{{ url_for('logout') }}">
+                    <i class="fas fa-sign-out-alt me-1"></i>退出
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container py-4">
+        <h2 class="mb-4">
+            <i class="fas fa-history me-2"></i>
+            评分管理
+        </h2>
+
+        <!-- 筛选器 -->
+        <div class="card card-custom mb-4" id="filter-card">
+            <div class="card-header card-header-custom">
+                <h5 class="mb-0"><i class="fas fa-filter me-2"></i>筛选与操作</h5>
+            </div>
+            <div class="card-body">
+                <div class="row gy-3">
+                    <div class="col-md-4 col-lg-2">
+                        <label for="grade-filter" class="form-label">年级</label>
+                        <select id="grade-filter" class="form-select">
+                            <option value="">全部年级</option>
+                            <option value="中预">中预</option>
+                            <option value="初一">初一</option>
+                            <option value="初二">初二</option>
+                            <option value="高一">高一</option>
+                            <option value="高二">高二</option>
+                            <option value="VCE">VCE</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4 col-lg-2">
+                        <label for="date-filter" class="form-label">周期</label>
+                        <select id="date-filter" class="form-select">
+                            <option value="">全部时间</option>
+                            <option value="current">本周期</option>
+                            <option value="previous">上一周期</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4 col-lg-3">
+                        <label for="search-input" class="form-label">搜索</label>
+                        <input type="text" id="search-input" class="form-control" placeholder="班级、评分人、备注...">
+                    </div>
+                    <div class="col-md-12 col-lg-5">
+                        <label class="form-label">批量操作</label>
+                        <div class="d-grid gap-2 d-md-block">
+                            <button type="button" class="btn btn-custom" id="bulk-actions-btn" onclick="bulkArchiveAction()" disabled>
+                                <i class="fas fa-archive me-2"></i>归档
+                            </button>
+                            <button type="button" class="btn btn-outline-custom" id="toggle-select-all-btn">
+                                <i class="fas fa-check-double me-2"></i>全选
+                            </button>
+                            <span id="selection-counter" class="ms-3 text-muted align-middle"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 评分历史表格 -->
+        <div class="card card-custom">
+            <div class="card-header card-header-custom">
+                <h5 class="mb-0"><i class="fas fa-list me-2"></i>评分记录</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive-mobile">
+                    <table id="scoresTable" class="table table-sm table-hover w-100">
+                        <thead class="table-light">
+                            <tr>
+                                <th><input type="checkbox" id="select-all-checkbox" class="form-check-input"></th>
+                                <th class="sortable">时间</th>
+                                <th class="d-none d-md-table-cell">评分人</th>
+                                <th class="sortable"><span class="d-none d-md-inline">评分班级</span><span class="d-md-none">评分班</span></th>
+                                <th class="d-none d-md-table-cell">被查年级</th>
+                                <th class="sortable"><span class="d-none d-md-inline">被查班级</span><span class="d-md-none">被查班</span></th>
+                                <th class="sortable">总分</th>
+                                <th class="sortable">备注</th>
+                            </tr>
+                        </thead>
+                        <tbody id="scores-tbody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.datatables.net/1.11.5/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.11.5/js/dataTables.bootstrap5.min.js"></script>
+    <script>
+        let table;
+        let periods = {};
+        const selectedIds = new Set();
+        let lastSelectedCheckbox = null;
+
+        $(document).ready(function() {
+            table = $('#scoresTable').DataTable({
+                processing: true,
+                serverSide: false,
+                ajax: {
+                    url: '/api/my_scores?limit=2000',
+                    dataSrc: function(json) {
+                        periods = json.periods || {};
+                        if (!periods.previous) {
+                            $('#date-filter option[value="previous"]').remove();
+                        }
+                        return json.scores;
+                    }
+                },
+                columns: [
+                    { 
+                        data: 'id',
+                        render: (data) => `<input type="checkbox" class="row-checkbox form-check-input" value="${data}">`,
+                    },
+                    { 
+                        data: 'created_at', 
+                        render: function(data) {
+                            const fullDate = formatDate(data, true);
+                            const shortDate = formatDate(data, false);
+                            return `<span class="d-none d-md-inline">${fullDate}</span><span class="d-md-none mobile-date">${shortDate}</span>`;
+                        }
+                    },
+                    { data: 'evaluator_name', className: 'd-none d-md-table-cell' },
+                    { data: 'evaluator_class' },
+                    { data: 'target_grade', className: 'd-none d-md-table-cell' },
+                    { data: 'target_class' },
+                    { 
+                        data: 'total',
+                        render: function(data, type, row) {
+                            if (type === 'display') {
+                                const badgeClass = data >= 8 ? 'badge-score-high' : data >= 6 ? 'badge-score-mid' : 'badge-score-low';
+                                return `<span class="badge-custom ${badgeClass} badge-sm">${data}/10</span>`;
+                            }
+                            return data; // Use raw data for sorting
+                        }
+                    },
+                    { 
+                        data: 'note', 
+                        render: function(data, type, row) {
+                            const note = data || '-';
+                            if (type === 'display') {
+                                const maxWidth = window.innerWidth <= 768 ? '80px' : '120px';
+                                return `<div title="${note}" style="max-width: ${maxWidth}; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; text-overflow: ellipsis;">
+                                            ${note}
+                                        </div>`;
+                            }
+                            return note; // Use raw note for sorting
+                        }
+                    }
+                ],
+                order: [[1, 'desc']],
+                pageLength: 20,
+                searching: true, // 启用原生搜索
+                lengthChange: false,
+                language: {
+                    "sProcessing": "处理中...",
+                    "sZeroRecords": "没有匹配结果",
+                    "sInfo": "显示第 _START_ 至 _END_ 项结果，共 _TOTAL_ 项",
+                    "sInfoEmpty": "显示第 0 至 0 项结果，共 0 项",
+                    "sInfoFiltered": "(由 _MAX_ 项结果过滤)",
+                    "sSearch": "搜索:",
+                    "sEmptyTable": "表中数据为空",
+                    "oPaginate": { "sPrevious": "上页", "sNext": "下页" }
+                },
+                columnDefs: [
+                    { orderable: false, targets: [0, 2, 4] }, // 备注列 (7) 现在可排序
+                    { type: "num", targets: 6 }
+                ],
+                rowCallback: function(row, data) {
+                    $(row).find('.row-checkbox').prop('checked', selectedIds.has(data.id.toString()));
+                },
+                drawCallback: function() {
+                    updateSelectAllCheckbox();
+                    updateSelectionCounter();
+                    lastSelectedCheckbox = null;
+                }
+            });
+
+            // 筛选器事件 (原生搜索)
+            $('#search-input').on('keyup', function () {
+                table.search(this.value).draw();
+            });
+            $('#grade-filter, #date-filter').on('change', () => table.draw());
+
+
+            // 全选/取消全选 (表头)
+            $('#select-all-checkbox').on('click', function() {
+                const rows = table.rows({ 'page': 'current', 'search': 'applied' }).nodes();
+                const isChecked = this.checked;
+                $(rows).find('.row-checkbox').each(function() {
+                    updateSelectionState(this, isChecked);
+                });
+            });
+
+            // 动态全选按钮
+            $('#toggle-select-all-btn').on('click', function() {
+                const isSelectAll = $(this).text().trim() === '全选';
+                toggleAllFiltered(isSelectAll);
+            });
+
+            // 行点击事件
+            $('#scoresTable tbody').on('click', 'tr', function(e) {
+                if ($(e.target).is('input[type="checkbox"]')) return;
+                $(this).find('.row-checkbox').trigger('click');
+            });
+
+            // Shift多选与键盘导航修复
+            $('#scoresTable tbody').on('click', '.row-checkbox', function(e) {
+                const currentCheckbox = this;
+                if (e.shiftKey && lastSelectedCheckbox) {
+                    const checkboxes = table.rows({ 'search': 'applied' }).nodes().to$().find('.row-checkbox');
+                    const start = checkboxes.index(currentCheckbox);
+                    const end = checkboxes.index(lastSelectedCheckbox);
+                    checkboxes.slice(Math.min(start, end), Math.max(start, end) + 1).each(function() {
+                        updateSelectionState(this, true);
+                    });
+                } else {
+                    updateSelectionState(this, this.checked);
+                }
+                lastSelectedCheckbox = currentCheckbox;
+                $(currentCheckbox).blur();
+            });
+            
+            // 左右键翻页
+            $(document).on('keydown', function(e) {
+                if ($(e.target).is('input, select')) return;
+                if (e.key === 'ArrowLeft') table.page('previous').draw('page');
+                else if (e.key === 'ArrowRight') table.page('next').draw('page');
+            });
+
+            // 自定义筛选逻辑 (仅用于下拉框)
+            $.fn.dataTable.ext.search.push(
+                function(settings, data, dataIndex) {
+                    if (settings.nTable.id !== 'scoresTable') return true;
+
+                    const gradeFilter = $('#grade-filter').val();
+                    const dateFilter = $('#date-filter').val();
+                    const rowData = settings.aoData[dataIndex]._aData;
+
+                    if (!rowData) return true;
+
+                    if (gradeFilter && rowData.target_grade !== gradeFilter) return false;
+                    
+                    if (dateFilter && periods[dateFilter]) {
+                        const period = periods[dateFilter];
+                        const scoreDate = new Date(rowData.created_at);
+                        const startDate = new Date(period.start);
+                        const endDate = new Date(period.end);
+                        endDate.setHours(23, 59, 59, 999);
+                        if (scoreDate < startDate || scoreDate > endDate) return false;
+                    }
+                    
+                    return true;
+                }
+            );
+        });
+
+        function updateSelectionState(checkbox, shouldBeChecked) {
+            const id = $(checkbox).val();
+            if (shouldBeChecked) selectedIds.add(id);
+            else selectedIds.delete(id);
+            $(checkbox).prop('checked', shouldBeChecked);
+            updateSelectAllCheckbox();
+            updateSelectionCounter();
+        }
+
+        function toggleAllFiltered(select) {
+            const rows = table.rows({ 'search': 'applied' }).nodes();
+            $(rows).find('.row-checkbox').each(function() {
+                updateSelectionState(this, select);
+            });
+        }
+
+        function updateSelectionCounter() {
+            if (!table || !table.rows) return;
+            const count = selectedIds.size;
+            $('#selection-counter').text(count > 0 ? `已选 ${count} 项` : '');
+            $('#bulk-actions-btn').prop('disabled', count === 0);
+            const btn = $('#toggle-select-all-btn');
+            const allFilteredRows = table.rows({ 'search': 'applied' }).count();
+            if (count > 0 && count === allFilteredRows && allFilteredRows > 0) {
+                btn.html('<i class="fas fa-times me-2"></i>取消全选');
+            } else {
+                btn.html('<i class="fas fa-check-double me-2"></i>全选');
+            }
+        }
+
+        function updateSelectAllCheckbox() {
+            if (table && table.rows) {
+                const rowsOnPage = table.rows({ 'page': 'current', 'search': 'applied' }).nodes();
+                const allCheckedOnPage = rowsOnPage.length > 0 && $(rowsOnPage).find('.row-checkbox:checked').length === rowsOnPage.length;
+                $('#select-all-checkbox').prop('checked', allCheckedOnPage);
+            }
+        }
+
+        function getSelectedIds() {
+            return Array.from(selectedIds);
+        }
+        
+        function performBulkAction(action, scoreIds) {
+            $.ajax({
+                url: '/api/scores/bulk_action',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ action: action, score_ids: scoreIds }),
+                success: function(response) {
+                    if (response.success) {
+                        alert(response.message);
+                        selectedIds.clear();
+                        table.ajax.reload(null, false);
+                    } else {
+                        alert('操作失败: ' + response.message);
+                    }
+                },
+                error: function() {
+                    alert('请求失败，请检查网络或联系管理员。');
+                }
+            });
+        }
+
+        function bulkArchiveAction() {
+            const ids = getSelectedIds();
+            if (ids.length === 0) return;
+            if (confirm(`确定要归档选中的 ${ids.length} 条记录吗？`)) {
+                performBulkAction('archive', ids);
+            }
+        }
+
+        function formatDate(dateString, full = true) {
+            const date = new Date(dateString);
+            const options = {
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false
+            };
+            if (full) {
+                options.year = 'numeric';
+                return date.toLocaleString('zh-CN', options).replace(/\//g, '-');
+            } else {
+                return date.toLocaleString('zh-CN', options).replace(/\//g, '&#8209;').replace(' ', '&nbsp;');
+            }
+        }
+    </script>
+</body>
+</html>
