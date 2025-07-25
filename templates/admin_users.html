@@ -138,12 +138,13 @@
                         <button type="button" class="btn btn-custom danger" id="bulkDeleteBtn" disabled>
                             <i class="fas fa-trash me-2"></i>批量删除
                         </button>
-                        <button type="button" class="btn btn-custom" id="selectAllBtn">
-                            <i class="fas fa-check-square me-2"></i>全选
+                        <button type="button" class="btn btn-custom warning" id="bulkResetPasswordBtn" disabled>
+                            <i class="fas fa-key me-2"></i>批量重置密码
                         </button>
-                        <button type="button" class="btn btn-custom" id="clearSelectionBtn" style="display:none;">
-                            <i class="fas fa-times me-2"></i>取消全选
+                        <button type="button" class="btn btn-outline-custom" id="toggleSelectAllBtn">
+                            <i class="fas fa-check-double me-2"></i>全选
                         </button>
+                        <span id="selectionCounter" class="ms-3 text-muted align-middle"></span>
                     </div>
                     <div class="col-md-6 text-end">
                         <button type="button" class="btn btn-custom" id="exportUsersBtn">
@@ -168,15 +169,14 @@
                     <table class="table table-hover" id="usersTable">
                         <thead class="table-light">
                             <tr>
-                                <th width="5%">
-                                    <input type="checkbox" id="selectAll" class="form-check-input">
-                                </th>
+                                <th width="5%"><input type="checkbox" id="selectAll" class="form-check-input"></th>
                                 <th>用户名</th>
+                                <th>真实姓名</th>
                                 <th>班级</th>
                                 <th>角色</th>
-                                <th>创建时间</th>
-                                <th>评分次数</th>
-                                <th width="15%">操作</th>
+                                <th class="d-none d-md-table-cell">创建时间</th>
+                                <th class="d-none d-md-table-cell">评分次数</th>
+                                <th width="10%">操作</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -194,6 +194,12 @@
                                     <span class="badge-custom badge-teacher badge-sm">当前用户</span>
                                     {% endif %}
                                 </td>
+                                <td class="align-middle" data-username="{{ user.username }}" data-realname="{{ user.real_name or '' }}">
+                                    <span class="real-name-text">{{ user.real_name or '-' }}</span>
+                                    <button class="btn btn-sm btn-link edit-real-name-btn" style="padding: 0; vertical-align: baseline;">
+                                        <i class="fas fa-pencil-alt fa-xs"></i>
+                                    </button>
+                                </td>
                                 <td class="align-middle">{{ user.class_name }}</td>
                                 <td class="align-middle">
                                     {% if user.role == 'admin' %}
@@ -204,14 +210,14 @@
                                         <span class="badge-custom badge-student badge-sm">学生</span>
                                     {% endif %}
                                 </td>
-                                <td>{{ user.created_at | format_datetime if user.created_at else '未知' }}</td>
-                                <td class="align-middle">
+                                <td class="d-none d-md-table-cell">{{ user.created_at | format_datetime if user.created_at else '未知' }}</td>
+                                <td class="align-middle d-none d-md-table-cell">
                                     <span class="badge-custom badge-info badge-sm">{{ user.score_count }}</span>
                                 </td>
                                 <td class="align-middle">
                                     {% if user.id != current_user.id %}
                                     <button class="btn btn-sm btn-custom danger action-btn delete-user"
-                                            data-user-id="{{ user.id }}" 
+                                            data-user-id="{{ user.id }}"
                                             data-username="{{ user.username }}">
                                         <i class="fas fa-trash"></i>
                                     </button>
@@ -234,34 +240,40 @@
         </div>
     </div>
 
-    <!-- 确认删除模态框 -->
-    <div class="modal fade" id="deleteModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content card-custom">
-                <div class="modal-header" style="background-color: #f8d7da; color: #721c24;">
-                    <h5 class="modal-title">
-                        <i class="fas fa-exclamation-triangle me-2"></i>确认删除
-                    </h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <p>确定要删除用户 <strong id="deleteUsername"></strong> 吗？</p>
-                    <p class="text-danger">此操作不可撤销，该用户的所有数据将被删除。</p>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-custom" data-bs-dismiss="modal">取消</button>
-                    <button type="button" class="btn btn-custom danger" id="confirmDelete">删除</button>
-                </div>
-            </div>
-        </div>
-    </div>
+     <!-- 编辑真实姓名模态框 -->
+   <div class="modal fade" id="editRealNameModal" tabindex="-1">
+       <div class="modal-dialog">
+           <div class="modal-content card-custom">
+               <div class="modal-header">
+                   <h5 class="modal-title"><i class="fas fa-user-edit me-2"></i>编辑真实姓名</h5>
+                   <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+               </div>
+               <div class="modal-body">
+                   <form id="editRealNameForm">
+                       <div class="mb-3">
+                           <label class="form-label">用户名</label>
+                           <input type="text" id="editUsername" class="form-control" readonly>
+                       </div>
+                       <div class="mb-3">
+                           <label for="editRealName" class="form-label">真实姓名</label>
+                           <input type="text" id="editRealName" class="form-control">
+                       </div>
+                   </form>
+               </div>
+               <div class="modal-footer">
+                   <button type="button" class="btn btn-custom" data-bs-dismiss="modal">取消</button>
+                   <button type="button" class="btn btn-primary-custom" id="saveRealName">保存</button>
+               </div>
+           </div>
+       </div>
+   </div>
 
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         $(document).ready(function() {
-            let selectedUsers = [];
-            let currentUserId = null;
+            let selectedUsers = new Set();
+            let lastSelectedCheckbox = null;
 
             // 创建用户
             $('#createUserForm').on('submit', function(e) {
@@ -285,7 +297,7 @@
                             alert(res.message);
                             location.reload();
                         } else {
-                            alert('创建失败：' + res.message);
+                            alert('创建失败：' + (res.message || '未知错误'));
                         }
                     },
                     error: function() {
@@ -294,71 +306,99 @@
                 });
             });
 
-            // 更新选择状态
-            function updateSelection() {
-                selectedUsers = $('.user-checkbox:checked').map(function() {
-                    return $(this).val();
-                }).get();
-                
-                $('#bulkDeleteBtn').prop('disabled', selectedUsers.length === 0);
-                
-                if (selectedUsers.length > 0) {
-                    $('#selectAllBtn').hide();
-                    $('#clearSelectionBtn').show();
+           function updateSelectionState(checkbox, shouldBeChecked) {
+               const id = $(checkbox).val();
+               if (shouldBeChecked) {
+                   selectedUsers.add(id);
+               } else {
+                   selectedUsers.delete(id);
+               }
+               $(checkbox).prop('checked', shouldBeChecked);
+               updateButtonsAndCounter();
+           }
+
+           function updateButtonsAndCounter() {
+                const count = selectedUsers.size;
+                $('#bulkDeleteBtn').prop('disabled', count === 0);
+                $('#bulkResetPasswordBtn').prop('disabled', count === 0);
+                $('#selectionCounter').text(count > 0 ? `已选 ${count} 项` : '');
+
+                const btn = $('#toggleSelectAllBtn');
+                const allCheckboxes = $('.user-checkbox:not(:disabled)');
+                const allSelected = allCheckboxes.length > 0 && count === allCheckboxes.length;
+
+                if (allSelected) {
+                    btn.html('<i class="fas fa-times me-2"></i>取消全选');
                 } else {
-                    $('#selectAllBtn').show();
-                    $('#clearSelectionBtn').hide();
+                    btn.html('<i class="fas fa-check-double me-2"></i>全选');
+                }
+                
+                // Sync header checkbox
+                const headerCheckbox = $('#selectAll');
+                if (headerCheckbox.prop('checked') !== allSelected) {
+                    headerCheckbox.prop('checked', allSelected);
                 }
             }
 
-            // 全选/取消全选
-            $('#selectAll').on('change', function() {
-                $('.user-checkbox:not(:disabled)').prop('checked', this.checked);
-                updateSelection();
+            // 全选/取消全选 (表头)
+            $('#selectAll').on('click', function() {
+                const isChecked = this.checked;
+                $('.user-checkbox:not(:disabled)').each(function() {
+                    updateSelectionState(this, isChecked);
+                });
             });
 
-            $('#selectAllBtn').click(function() {
-                $('#selectAll').prop('checked', true).trigger('change');
+            // 全选/取消全选 (按钮)
+            $('#toggleSelectAllBtn').on('click', function() {
+                const allCheckboxes = $('.user-checkbox:not(:disabled)');
+                const isCurrentlyAllSelected = selectedUsers.size === allCheckboxes.length;
+                allCheckboxes.each(function() {
+                    updateSelectionState(this, !isCurrentlyAllSelected);
+                });
             });
 
-            $('#clearSelectionBtn').click(function() {
-                $('#selectAll, .user-checkbox').prop('checked', false);
-                updateSelection();
+            // 点击行选择
+            $('#usersTable tbody').on('click', 'tr', function(e) {
+                if ($(e.target).is('input[type="checkbox"], a, button, .btn, .fas, .edit-real-name-btn, .fa-pencil-alt')) return;
+                $(this).find('.user-checkbox:not(:disabled)').trigger('click');
             });
 
-            $('.user-checkbox').on('change', updateSelection);
+            // Shift多选
+            $('#usersTable tbody').on('click', '.user-checkbox', function(e) {
+                const currentCheckbox = this;
+                if (e.shiftKey && lastSelectedCheckbox) {
+                    const checkboxes = $('#usersTable .user-checkbox:not(:disabled)');
+                    const start = checkboxes.index(currentCheckbox);
+                    const end = checkboxes.index(lastSelectedCheckbox);
+                    checkboxes.slice(Math.min(start, end), Math.max(start, end) + 1).each(function() {
+                        updateSelectionState(this, true);
+                    });
+                } else {
+                    updateSelectionState(this, this.checked);
+                }
+                lastSelectedCheckbox = currentCheckbox;
+            });
 
             // 单个删除
-            $('.delete-user').click(function() {
-                currentUserId = $(this).data('user-id');
+            $('#usersTable').on('click', '.delete-user', function() {
+                const userId = $(this).data('user-id');
                 const username = $(this).data('username');
-                $('#deleteUsername').text(username);
-                $('#deleteModal').modal('show');
-            });
-
-            // 确认删除
-            $('#confirmDelete').click(function() {
-                if (currentUserId) {
+                if (confirm(`确定要删除用户 ${username} 吗？此操作不可撤销！`)) {
                     $.ajax({
                         url: '/admin/users',
                         type: 'POST',
                         contentType: 'application/json',
-                        data: JSON.stringify({
-                            action: 'delete',
-                            user_id: currentUserId
-                        }),
+                        data: JSON.stringify({ action: 'delete', user_id: userId }),
                         success: function(res) {
                             if (res.success) {
                                 alert(res.message);
                                 location.reload();
                             } else {
-                                alert('删除失败：' + res.message);
+                                alert('删除失败：' + (res.message || '未知错误'));
                             }
-                            $('#deleteModal').modal('hide');
                         },
                         error: function() {
                             alert('网络错误，请重试');
-                            $('#deleteModal').modal('hide');
                         }
                     });
                 }
@@ -366,23 +406,21 @@
 
             // 批量删除
             $('#bulkDeleteBtn').click(function() {
-                if (selectedUsers.length === 0) return;
+                const userIds = Array.from(selectedUsers);
+                if (userIds.length === 0) return;
                 
-                if (confirm(`确定要删除选中的 ${selectedUsers.length} 个用户吗？此操作不可撤销！`)) {
+                if (confirm(`确定要删除选中的 ${userIds.length} 个用户吗？此操作不可撤销！`)) {
                     $.ajax({
                         url: '/admin/users',
                         type: 'POST',
                         contentType: 'application/json',
-                        data: JSON.stringify({
-                            action: 'bulk_delete',
-                            user_ids: selectedUsers
-                        }),
+                        data: JSON.stringify({ action: 'bulk_delete', user_ids: userIds }),
                         success: function(res) {
                             if (res.success) {
                                 alert(res.message);
                                 location.reload();
                             } else {
-                                alert('删除失败：' + res.message);
+                                alert('删除失败：' + (res.message || '未知错误'));
                             }
                         },
                         error: function() {
@@ -392,29 +430,135 @@
                 }
             });
 
+            // 批量重置密码 (V2: 随机密码并导出)
+            $('#bulkResetPasswordBtn').click(function() {
+               const userIds = Array.from(selectedUsers);
+               if (userIds.length === 0) return;
+
+               if (confirm(`确定要为选中的 ${userIds.length} 个用户重置为新的随机6位密码吗？\n\n操作成功后将自动下载包含新密码的Excel文件。`)) {
+                   // 显示加载指示
+                   const btn = $(this);
+                   const originalHtml = btn.html();
+                   btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>正在生成...');
+
+                   $.ajax({
+                       url: '/admin/users',
+                       type: 'POST',
+                       contentType: 'application/json',
+                       data: JSON.stringify({
+                           action: 'bulk_reset_password',
+                           user_ids: userIds
+                       }),
+                       xhrFields: {
+                           responseType: 'blob' // 关键：期望接收二进制数据
+                       },
+                       success: function(blob, status, xhr) {
+                           // 优先从自定义的X-Filename头获取文件名，解决中文编码问题
+                           let filename = "密码重置.xlsx"; // Fallback filename
+                           const customFilename = xhr.getResponseHeader('X-Filename');
+                           if (customFilename) {
+                               // 解码URL编码的UTF-8文件名
+                               filename = decodeURIComponent(customFilename);
+                           }
+
+                           // 创建下载链接
+                           const url = window.URL.createObjectURL(blob);
+                           const a = document.createElement('a');
+                           a.href = url;
+                           a.download = filename;
+                           document.body.appendChild(a);
+                           a.click();
+                           a.remove();
+                           window.URL.revokeObjectURL(url);
+                           
+                           alert('密码重置成功，Excel文件已开始下载。');
+                           location.reload();
+                       },
+                       error: function(xhr, status, error) {
+                            // 尝试将Blob错误响应解析为JSON
+                           if (xhr.responseType === 'blob' && xhr.responseText) {
+                               try {
+                                   const errorJson = JSON.parse(xhr.responseText);
+                                   alert('重置失败：' + (errorJson.message || '未知错误'));
+                               } catch (e) {
+                                   alert('发生未知网络错误，请重试。');
+                               }
+                           } else {
+                               alert('发生未知网络错误，请重试。');
+                           }
+                       },
+                       complete: function() {
+                           // 恢复按钮状态
+                           btn.prop('disabled', false).html(originalHtml);
+                       }
+                   });
+               }
+           });
+
             // 导出用户列表
             $('#exportUsersBtn').click(function() {
-                const csvContent = "用户名,班级,角色,创建时间,评分次数\n" +
+                const csvContent = "用户名,真实姓名,班级,角色,创建时间,评分次数\n" +
                     $('#usersTable tbody tr').map(function() {
                         const username = $(this).data('username');
-                        const className = $(this).find('td:eq(2)').text();
-                        const role = $(this).find('.badge').text();
-                        const createdAt = $(this).find('td:eq(4)').text();
-                        const scoreCount = $(this).find('td:eq(5) .badge').text();
-                        return `"${username}","${className}","${role}","${createdAt}","${scoreCount}"`;
+                        const realName = $(this).find('.real-name-text').text().trim();
+                        const className = $(this).find('td:eq(3)').text();
+                        const role = $(this).find('td:eq(4) .badge').text();
+                        const createdAt = $(this).find('td:eq(5)').text();
+                        const scoreCount = $(this).find('td:eq(6) .badge').text();
+                        return `"${username}","${realName}","${className}","${role}","${createdAt}","${scoreCount}"`;
                     }).get().join('\n');
-
-                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-                const link = document.createElement('a');
-                const url = URL.createObjectURL(blob);
-                link.setAttribute('href', url);
-                link.setAttribute('download', '用户列表.csv');
-                link.style.visibility = 'hidden';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
+                
+                downloadCsv(csvContent, '用户列表.csv');
             });
+
+           function downloadCsv(csvContent, fileName) {
+               const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+               const link = document.createElement('a');
+               const url = URL.createObjectURL(blob);
+               link.setAttribute('href', url);
+               link.setAttribute('download', fileName);
+               link.style.visibility = 'hidden';
+               document.body.appendChild(link);
+               link.click();
+               document.body.removeChild(link);
+           }
+       
+           // 编辑真实姓名
+           let currentEditUsername = null;
+           $('#usersTable').on('click', '.edit-real-name-btn', function() {
+               const td = $(this).closest('td');
+               currentEditUsername = td.data('username');
+               const currentRealName = td.data('realname');
+               $('#editUsername').val(currentEditUsername);
+               $('#editRealName').val(currentRealName);
+               $('#editRealNameModal').modal('show');
+           });
+
+           $('#saveRealName').click(function() {
+               const newRealName = $('#editRealName').val().trim();
+               $.ajax({
+                   url: '/admin/users',
+                   type: 'POST',
+                   contentType: 'application/json',
+                   data: JSON.stringify({
+                       action: 'edit_real_name',
+                       username: currentEditUsername,
+                       real_name: newRealName
+                   }),
+                   success: function(res) {
+                       if (res.success) {
+                           alert(res.message);
+                           location.reload();
+                       } else {
+                           alert('更新失败：' + (res.message || '未知错误'));
+                       }
+                   },
+                   error: function() {
+                       alert('网络错误，请重试');
+                   }
+               });
+           });
         });
-    </script>
-</body>
-</html>
+     </script>
+ </body>
+ </html>

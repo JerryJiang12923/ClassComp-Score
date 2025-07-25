@@ -4,6 +4,9 @@ import shutil
 import json
 import re
 import platform
+import secrets
+import string
+import io
 from datetime import datetime, timedelta
 from calendar import monthrange
 import pytz
@@ -12,6 +15,7 @@ from flask_cors import CORS
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 import pandas as pd
 from werkzeug.security import generate_password_hash
+from urllib.parse import quote as url_quote
 
 # 导入安全组件
 from security_constants import ALLOWED_GRADES, PERIOD_CONSTANTS, USER_ROLES, SCORE_VALIDATION
@@ -345,6 +349,67 @@ def admin_users():
                 conn.commit()
                 return jsonify(success=True, message=f'用户 {username} 创建成功')
         
+            elif action == 'edit_real_name':
+               username = data.get('username')
+               real_name = data.get('real_name', '') # 允许为空字符串
+               if not username:
+                   return jsonify(success=False, message='缺少用户名'), 400
+               
+               UserRealName.set_real_name(username, real_name, conn)
+               conn.commit()
+               if real_name:
+                   return jsonify(success=True, message='真实姓名更新成功')
+               else:
+                   return jsonify(success=True, message='真实姓名已清空')
+
+            elif action == 'bulk_reset_password':
+               user_ids = data.get('user_ids', [])
+               if not user_ids:
+                   return jsonify(success=False, message='没有选择任何用户')
+
+               new_passwords_data = []
+               for user_id in user_ids:
+                   # 生成6位随机数字密码，确保是字符串
+                   new_password = ''.join(secrets.choice(string.digits) for _ in range(6))
+                   password_hash = generate_password_hash(new_password)
+                   
+                   placeholder = get_db_placeholder()
+                   cur.execute(f"UPDATE users SET password_hash = {placeholder} WHERE id = {placeholder}", (password_hash, user_id))
+                   
+                   cur.execute(f"SELECT username FROM users WHERE id = {placeholder}", (user_id,))
+                   user_record = cur.fetchone()
+                   if user_record:
+                       new_passwords_data.append({'用户名': user_record['username'], '新密码': new_password})
+
+               conn.commit()
+
+               # 创建Excel文件
+               df = pd.DataFrame(new_passwords_data)
+               output = io.BytesIO()
+               with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                   df.to_excel(writer, index=False, sheet_name='新密码')
+                   # 设置密码列为文本格式
+                   workbook = writer.book
+                   worksheet = writer.sheets['新密码']
+                   text_format = workbook.add_format({'num_format': '@'})
+                   worksheet.set_column('B:B', 15, text_format) # B列是新密码
+                   worksheet.set_column('A:A', 20) # A列是用户名
+
+               output.seek(0)
+               
+               timestamp = get_current_time().strftime('%Y%m%d_%H%M%S')
+               download_name = f'密码重置_{timestamp}.xlsx'
+               
+               response = send_file(
+                   output,
+                   as_attachment=True,
+                   download_name=download_name,
+                   mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+               )
+               response.headers['X-Filename'] = url_quote(download_name)
+               response.headers['Access-Control-Expose-Headers'] = 'X-Filename'
+               return response
+
         elif request.method == 'POST':
             # Handle form submission
             username = request.form.get('username')
@@ -374,13 +439,15 @@ def admin_users():
             # SQLite 版本 - 使用 GLOB
             cur.execute('''
                 SELECT u.id, u.username, u.class_name, u.role, u.created_at,
-                       COALESCE(sc.score_count, 0) as score_count
+                       COALESCE(sc.score_count, 0) as score_count,
+                       urn.real_name
                 FROM users u
                 LEFT JOIN (
                     SELECT user_id, COUNT(*) as score_count
                     FROM scores
                     GROUP BY user_id
                 ) sc ON u.id = sc.user_id
+                LEFT JOIN user_real_names urn ON u.username = urn.username
                 ORDER BY 
                     CASE u.role 
                         WHEN 'admin' THEN 1 
@@ -402,13 +469,15 @@ def admin_users():
             # PostgreSQL 版本 - 使用正则表达式
             cur.execute('''
                 SELECT u.id, u.username, u.class_name, u.role, u.created_at,
-                       COALESCE(sc.score_count, 0) as score_count
+                       COALESCE(sc.score_count, 0) as score_count,
+                       urn.real_name
                 FROM users u
                 LEFT JOIN (
                     SELECT user_id, COUNT(*) as score_count
                     FROM scores
                     GROUP BY user_id
                 ) sc ON u.id = sc.user_id
+                LEFT JOIN user_real_names urn ON u.username = urn.username
                 ORDER BY 
                     CASE u.role 
                         WHEN 'admin' THEN 1 
@@ -2353,4 +2422,4 @@ if __name__ == "__main__":
             print(f"❌ 数据库初始化失败: {init_e}")
             print("请检查数据库配置和权限")
     
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)), debug=False)
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)), debug=True)
