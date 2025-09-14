@@ -2422,4 +2422,8 @@ if __name__ == "__main__":
             print(f"❌ 数据库初始化失败: {init_e}")
             print("请检查数据库配置和权限")
     
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)), debug=True)
+    app.run(
+        host="0.0.0.0",
+        port=int(os.getenv("PORT", 5000)),
+        debug=os.getenv("FLASK_DEBUG", "False").lower() in ("true", "1", "yes")
+    )
