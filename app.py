@@ -25,6 +25,9 @@ from security_middleware import security_middleware
 # 导入时间处理工具
 from time_utils import get_current_time, get_local_timezone, parse_database_timestamp, format_datetime_for_display
 
+# 导入班级排序工具
+from class_sorting_utils import generate_class_sorting_sql
+
 # 时区配置
 def validate_grade_input(grade):
     """验证年级输入，防止SQL注入"""
@@ -990,18 +993,7 @@ def my_scores():
                         AND {date_func} <= {placeholder}
                     WHERE sc.is_active = 1 AND sc.semester_id = (SELECT id FROM semester_config WHERE is_active = 1)
                     GROUP BY sc.class_name, sc.grade_name
-                    ORDER BY
-                        CASE sc.grade_name
-                            WHEN '中预' THEN 1
-                            WHEN '初一' THEN 2
-                            WHEN '初二' THEN 3
-                            WHEN '高一' THEN 4
-                            WHEN '高一VCE' THEN 5
-                            WHEN '高二' THEN 6
-                            WHEN '高二VCE' THEN 7
-                            ELSE 8
-                        END,
-                        sc.class_name
+                    ORDER BY {generate_class_sorting_sql("sc.grade_name", "sc.class_name")}
                 ''', (period_start.strftime('%Y-%m-%d'), period_end.strftime('%Y-%m-%d')))
                 
                 class_status_raw = cursor.fetchall()
@@ -1087,18 +1079,7 @@ def my_scores():
                         AND sc.semester_id = (SELECT id FROM semester_config WHERE is_active = 1)
                         AND sc.grade_name IN ({grade_placeholders})
                     GROUP BY sc.class_name
-                    ORDER BY
-                        CASE MIN(sc.grade_name)
-                            WHEN '中预' THEN 1
-                            WHEN '初一' THEN 2
-                            WHEN '初二' THEN 3
-                            WHEN '高一' THEN 4
-                            WHEN '高二' THEN 5
-                            WHEN '高一VCE' THEN 6
-                            WHEN '高二VCE' THEN 7
-                            ELSE 8
-                        END,
-                        sc.class_name
+                    ORDER BY {generate_class_sorting_sql("MIN(sc.grade_name)", "sc.class_name")}
                 ''', [period_start.strftime('%Y-%m-%d'), period_end.strftime('%Y-%m-%d')] + teacher_grades)
                 class_status_raw = cursor.fetchall()
                 
@@ -1327,6 +1308,7 @@ def export_excel():
             final_params.extend(teacher_grade_params)
         
         if is_sqlite:
+            class_sorting_sql = generate_class_sorting_sql("target_grade", "target_class")
             sql = f"""
                 SELECT
                   id,
@@ -1342,9 +1324,10 @@ def export_excel():
                   created_at
                 FROM scores
                 {final_where_condition}
-                ORDER BY target_grade, target_class, evaluator_class, created_at
+                ORDER BY {class_sorting_sql}, evaluator_class, created_at
             """
         else:
+            class_sorting_sql = generate_class_sorting_sql("target_grade", "target_class")
             sql = f"""
                 SELECT
                   id,
@@ -1360,7 +1343,7 @@ def export_excel():
                   created_at
                 FROM scores
                 {final_where_condition}
-                ORDER BY created_at
+                ORDER BY {class_sorting_sql}, evaluator_class, created_at
             """
         
         # 构建完整的查询参数
@@ -1499,7 +1482,12 @@ def export_excel():
                     for i, display_grade in enumerate(display_grades):
                         grade_data = period_avg[period_avg['display_grade'] == display_grade][['target_class', 'total']].copy()
                         grade_data.columns = ['被查班级', '平均分']
-                        grade_data = grade_data.sort_values('被查班级')
+                        
+                        # 使用自定义排序逻辑对班级进行排序
+                        from class_sorting_utils import extract_class_number
+                        grade_data['班级数字'] = grade_data['被查班级'].apply(extract_class_number)
+                        grade_data = grade_data.sort_values(['班级数字', '被查班级'])
+                        grade_data = grade_data.drop('班级数字', axis=1)  # 删除临时列
                         
                         # 添加年级数据
                         summary_data.append(grade_data)
@@ -1609,6 +1597,7 @@ def export_excel():
                 
                 # 构建历史记录SQL
                 if is_sqlite:
+                    class_sorting_sql = generate_class_sorting_sql("h.target_grade", "h.target_class")
                     history_sql = f"""
                         SELECT 
                             h.original_score_id, h.user_id, h.evaluator_name, h.evaluator_class,
@@ -1616,9 +1605,10 @@ def export_excel():
                             h.note, h.original_created_at as created_at, h.overwritten_at, h.overwritten_by_score_id
                         FROM scores_history h
                         {history_where_condition}
-                        ORDER BY h.original_created_at, h.overwritten_at
+                        ORDER BY {class_sorting_sql}, h.original_created_at, h.overwritten_at
                     """
                 else:
+                    class_sorting_sql = generate_class_sorting_sql("h.target_grade", "h.target_class")
                     history_sql = f"""
                         SELECT 
                             h.original_score_id, h.user_id, h.evaluator_name, h.evaluator_class,
@@ -1626,7 +1616,7 @@ def export_excel():
                             h.note, h.original_created_at as created_at, h.overwritten_at, h.overwritten_by_score_id
                         FROM scores_history h
                         {history_where_condition}
-                        ORDER BY h.original_created_at, h.overwritten_at
+                        ORDER BY {class_sorting_sql}, h.original_created_at, h.overwritten_at
                     """
                 
                 # 执行历史记录查询
@@ -1710,8 +1700,18 @@ def export_excel():
                 detail_df = all_records[detail_columns].copy()
                 detail_df.columns = ['记录类型', '评分周期', '周期结束日', '评分班级', '被查年级', '被查班级', '总分', '整洁分', '摆放分', '使用分', '备注', '评分时间']
                 
-                # 按评分时间顺序排序（解决排序混乱问题）
-                detail_df = detail_df.sort_values(['评分时间', '记录类型'], ascending=[True, False])  # 先按时间，再按类型（当前记录在前）
+                # 按评分时间顺序排序，加入班级排序作为次要条件
+                from class_sorting_utils import extract_class_number
+                
+                # 定义年级排序映射
+                grade_order_map = {'中预': 1, '初一': 2, '初二': 3, '初三': 4, '高一': 5, '高二': 6, '高三': 7, '高一VCE': 8, '高二VCE': 9, '高三VCE': 10}
+                
+                detail_df['被查班级数字'] = detail_df['被查班级'].apply(extract_class_number)
+                detail_df['年级排序'] = detail_df['被查年级'].map(grade_order_map).fillna(99)
+                
+                # 多级排序：时间 -> 记录类型 -> 年级排序 -> 被查班级数字 -> 被查班级名
+                detail_df = detail_df.sort_values(['评分时间', '记录类型', '年级排序', '被查班级数字', '被查班级'], ascending=[True, False, True, True, True])
+                detail_df = detail_df.drop(['被查班级数字', '年级排序'], axis=1)  # 删除临时列
                 
                 # 写入Excel前，移除datetime的timezone信息
                 if '评分时间' in detail_df.columns:
@@ -2125,18 +2125,7 @@ def admin():
                                 AND sc.semester_id = (SELECT id FROM semester_config WHERE is_active = 1)
                                 AND sc.grade_name IN ({grade_placeholders})
                             GROUP BY sc.class_name, sc.grade_name
-                            ORDER BY 
-                                CASE sc.grade_name 
-                                    WHEN '中预' THEN 1 
-                                    WHEN '初一' THEN 2 
-                                    WHEN '初二' THEN 3 
-                                    WHEN '高一' THEN 4 
-                                    WHEN '高二' THEN 5 
-                                    WHEN '高一VCE' THEN 6 
-                                    WHEN '高二VCE' THEN 7 
-                                    ELSE 8 
-                                END, 
-                                sc.class_name
+                            ORDER BY {generate_class_sorting_sql("sc.grade_name", "sc.class_name")}
                         ''', [period_start.strftime('%Y-%m-%d'), period_end.strftime('%Y-%m-%d')] + teacher_grades)
                         grade_stats = cur.fetchall()
                     except Exception as semester_error:

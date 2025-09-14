@@ -3,6 +3,9 @@ from wtforms import StringField, PasswordField, SelectField, TextAreaField, Bool
 from wtforms.validators import DataRequired, Email, Length, EqualTo, NumberRange, ValidationError
 import re
 
+# 导入班级排序工具
+from class_sorting_utils import generate_class_sorting_sql
+
 class LoginForm(FlaskForm):
     username = StringField('用户名', validators=[
         DataRequired(message='请输入用户名'),
@@ -45,35 +48,13 @@ class InfoCommitteeRegistrationForm(FlaskForm):
         try:
             cur = conn.cursor()
             # 只选择当前活跃学期中配置的班级
-            cur.execute("""
+            class_sorting_sql = generate_class_sorting_sql("sc.grade_name", "sc.class_name")
+            cur.execute(f"""
                 SELECT sc.class_name
                 FROM semester_classes sc
                 JOIN semester_config s ON sc.semester_id = s.id
                 WHERE s.is_active = 1 AND sc.is_active = 1
-                ORDER BY 
-                    CASE sc.grade_name 
-                        WHEN '中预' THEN 1
-                        WHEN '初一' THEN 2
-                        WHEN '初二' THEN 3
-                        WHEN '初三' THEN 4
-                        WHEN '高一' THEN 5
-                        WHEN '高二' THEN 6
-                        WHEN '高三' THEN 7
-                        WHEN '高一VCE' THEN 8
-                        WHEN '高二VCE' THEN 9
-                        WHEN '高三VCE' THEN 10
-                        ELSE 99
-                    END,
-                    CASE 
-                        WHEN TRIM(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-                            sc.class_name, '班', ''), '年级', ''), '中预', ''), '初一', ''), '初二', ''), 
-                            '初三', ''), '高一', ''), '高二', ''), '高三', ''), 'VCE', ''), '') != ''
-                        THEN CAST(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-                            sc.class_name, '班', ''), '年级', ''), '中预', ''), '初一', ''), '初二', ''), 
-                            '初三', ''), '高一', ''), '高二', ''), '高三', ''), 'VCE', ''), '') AS INTEGER)
-                        ELSE 0
-                    END,
-                    sc.class_name
+                ORDER BY {class_sorting_sql}
             """)
             # 生成选项
             self.class_name.choices = [('', '请选择班级')] + [(c['class_name'], c['class_name']) for c in cur.fetchall()]

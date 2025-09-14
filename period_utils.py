@@ -10,6 +10,9 @@ from datetime import datetime, timedelta
 import pytz
 import os
 
+# 导入班级排序工具
+from class_sorting_utils import generate_class_sorting_sql
+
 # 周期计算常量
 DAYS_IN_TWO_WEEKS = 14
 PERIOD_BUFFER_DAYS = 13
@@ -48,34 +51,12 @@ def get_current_semester_config(conn=None):
             db_url = os.getenv("DATABASE_URL", "sqlite:///classcomp.db")
             placeholder = "?" if db_url.startswith("sqlite") else "%s"
             
+            class_sorting_sql = generate_class_sorting_sql("grade_name", "class_name")
             cur.execute(f'''
                 SELECT grade_name, class_name
                 FROM semester_classes 
                 WHERE semester_id = {placeholder} AND is_active = 1
-                ORDER BY 
-                    CASE grade_name 
-                        WHEN '中预' THEN 1
-                        WHEN '初一' THEN 2
-                        WHEN '初二' THEN 3
-                        WHEN '初三' THEN 4
-                        WHEN '高一' THEN 5
-                        WHEN '高二' THEN 6
-                        WHEN '高三' THEN 7
-                        WHEN '高一VCE' THEN 8
-                        WHEN '高二VCE' THEN 9
-                        WHEN '高三VCE' THEN 10
-                        ELSE 99
-                    END,
-                    CASE 
-                        WHEN TRIM(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-                            class_name, '班', ''), '年级', ''), '中预', ''), '初一', ''), '初二', ''), 
-                            '初三', ''), '高一', ''), '高二', ''), '高三', ''), 'VCE', ''), '') != ''
-                        THEN CAST(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-                            class_name, '班', ''), '年级', ''), '中预', ''), '初一', ''), '初二', ''), 
-                            '初三', ''), '高一', ''), '高二', ''), '高三', ''), 'VCE', ''), '') AS INTEGER)
-                        ELSE 0
-                    END,
-                    class_name
+                ORDER BY {class_sorting_sql}
             ''', (semester['id'],))
             classes = cur.fetchall()
             

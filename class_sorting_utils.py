@@ -8,44 +8,53 @@
 import re
 import os
 
-def get_class_number_sql():
+def get_class_number_sql(class_name_column):
     """
     返回适用于SQLite和PostgreSQL的班级数字提取SQL表达式
     
-    这个函数会自动检测数据库类型并返回相应的SQL表达式
-    用于从班级名称中提取数字进行排序
+    Args:
+        class_name_column (str): 班级名称列名，如 'class_name' 或 'sc.class_name'
+    
+    Returns:
+        str: 用于提取班级数字的SQL表达式
     """
     
     db_url = os.getenv("DATABASE_URL", "sqlite:///classcomp.db")
     is_sqlite = db_url.startswith("sqlite")
     
     if is_sqlite:
-        # SQLite版本：使用正则表达式替换
-        return """
+        # SQLite版本：使用字符串替换提取数字
+        return f"""
         CASE 
             WHEN TRIM(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-                class_name, '班', ''), '年级', ''), '中预', ''), '初一', ''), '初二', ''), 
+                {class_name_column}, '班', ''), '年级', ''), '中预', ''), '初一', ''), '初二', ''), 
                 '初三', ''), '高一', ''), '高二', ''), '高三', ''), 'VCE', ''), '') != ''
             THEN CAST(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-                class_name, '班', ''), '年级', ''), '中预', ''), '初一', ''), '初二', ''), 
+                {class_name_column}, '班', ''), '年级', ''), '中预', ''), '初一', ''), '初二', ''), 
                 '初三', ''), '高一', ''), '高二', ''), '高三', ''), 'VCE', ''), '') AS INTEGER)
             ELSE 0
         END"""
     else:
         # PostgreSQL版本：使用正则表达式
-        return """
+        return f"""
         CASE 
-            WHEN class_name ~ '[0-9]+' THEN 
-                CAST(REGEXP_REPLACE(class_name, '[^0-9]', '', 'g') AS INTEGER)
+            WHEN {class_name_column} ~ '[0-9]+' THEN 
+                CAST(REGEXP_REPLACE({class_name_column}, '[^0-9]', '', 'g') AS INTEGER)
             ELSE 0
         END"""
 
-def get_grade_order_sql():
+def get_grade_order_sql(grade_name_column):
     """
     返回年级排序的SQL表达式
+    
+    Args:
+        grade_name_column (str): 年级名称列名，如 'grade_name' 或 'sc.grade_name'
+    
+    Returns:
+        str: 年级排序的SQL表达式
     """
-    return """
-    CASE grade_name 
+    return f"""
+    CASE {grade_name_column} 
         WHEN '中预' THEN 1
         WHEN '初一' THEN 2
         WHEN '初二' THEN 3
@@ -59,19 +68,42 @@ def get_grade_order_sql():
         ELSE 99
     END"""
 
-def get_complete_class_order_sql():
+def generate_class_sorting_sql(grade_name_column, class_name_column):
+    """
+    生成完整的班级排序SQL子句
+    
+    Args:
+        grade_name_column (str): 年级名称列名
+        class_name_column (str): 班级名称列名
+    
+    Returns:
+        str: 完整的排序SQL子句（不包含ORDER BY关键字）
+    """
+    grade_order = get_grade_order_sql(grade_name_column)
+    class_number = get_class_number_sql(class_name_column)
+    
+    return f"{grade_order}, {class_number}, {class_name_column}"
+
+def get_complete_class_order_sql(grade_column="grade_name", class_column="class_name"):
     """
     返回完整的班级排序SQL语句
     先按年级排序，再按班级数字排序，最后按班级名称排序
+    
+    Args:
+        grade_column (str): 年级列名
+        class_column (str): 班级列名
+    
+    Returns:
+        str: 完整的ORDER BY子句
     """
-    grade_order = get_grade_order_sql()
-    class_number = get_class_number_sql()
+    grade_order = get_grade_order_sql(grade_column)
+    class_number = get_class_number_sql(class_column)
     
     return f"""
     ORDER BY 
         {grade_order},
         {class_number},
-        class_name
+        {class_column}
     """
 
 def extract_class_number(class_name):

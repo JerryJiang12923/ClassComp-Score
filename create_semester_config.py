@@ -248,7 +248,17 @@ def test_semester_config():
                     FROM semester_classes 
                     WHERE semester_id = ? AND is_active = 1
                     GROUP BY grade_name
-                    ORDER BY grade_name
+                    ORDER BY 
+                        CASE grade_name 
+                            WHEN '中预' THEN 1
+                            WHEN '初一' THEN 2
+                            WHEN '初二' THEN 3
+                            WHEN '高一' THEN 4
+                            WHEN '高二' THEN 5
+                            WHEN '高一VCE' THEN 6
+                            WHEN '高二VCE' THEN 7
+                            ELSE 99
+                        END
                 ''', (semester['id'],))
             else:
                 cur.execute('''
@@ -256,7 +266,17 @@ def test_semester_config():
                     FROM semester_classes 
                     WHERE semester_id = %s AND is_active = 1
                     GROUP BY grade_name
-                    ORDER BY grade_name
+                    ORDER BY 
+                        CASE grade_name 
+                            WHEN '中预' THEN 1
+                            WHEN '初一' THEN 2
+                            WHEN '初二' THEN 3
+                            WHEN '高一' THEN 4
+                            WHEN '高二' THEN 5
+                            WHEN '高一VCE' THEN 6
+                            WHEN '高二VCE' THEN 7
+                            ELSE 99
+                        END
                 ''', (semester['id'],))
             
             grades = cur.fetchall()
