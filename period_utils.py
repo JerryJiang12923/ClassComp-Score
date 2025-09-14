@@ -73,7 +73,7 @@ def get_current_semester_config(conn=None):
 def calculate_period_info(target_date=None, semester_config=None, conn=None):
     """
     根据学期配置计算评分周期信息
-    使用第一周期结束日期作为基准进行计算
+    基于学期开始日期和第一周期结束日期进行计算
     """
     if target_date is None:
         # 使用时区感知的当前时间
@@ -83,43 +83,65 @@ def calculate_period_info(target_date=None, semester_config=None, conn=None):
         # 如果传入的是字符串，转换为date对象
         target_date = get_local_timezone().localize(datetime.strptime(target_date, '%Y-%m-%d')).date()
     
-    def _get_year_start_from_config(config):
-        """Helper to get start date from semester config."""
+    def _get_semester_info_from_config(config):
+        """从学期配置获取开始日期和第一周期结束日期"""
+        # 学期开始日期
+        start_date_raw = config['start_date']
+        if isinstance(start_date_raw, str):
+            semester_start = get_local_timezone().localize(datetime.strptime(start_date_raw, '%Y-%m-%d')).date()
+        else:
+            semester_start = start_date_raw
+        
+        # 第一周期结束日期
         end_date_raw = config['first_period_end_date']
         if isinstance(end_date_raw, str):
             first_period_end = get_local_timezone().localize(datetime.strptime(end_date_raw, '%Y-%m-%d')).date()
         else:
             first_period_end = end_date_raw
-        return first_period_end - timedelta(days=PERIOD_BUFFER_DAYS)
+        
+        return semester_start, first_period_end
 
     if semester_config is None:
         config_data = get_current_semester_config(conn=conn)
         if not config_data:
             # 如果没有学期配置，使用默认逻辑
             year_start = datetime(target_date.year, 1, 1).date()
+            # 默认第一周期14天
+            first_period_end = year_start + timedelta(days=PERIOD_BUFFER_DAYS)
         else:
-            year_start = _get_year_start_from_config(config_data['semester'])
+            year_start, first_period_end = _get_semester_info_from_config(config_data['semester'])
     else:
-        year_start = _get_year_start_from_config(semester_config)
+        year_start, first_period_end = _get_semester_info_from_config(semester_config)
     
-    # 找到该日期所在的周日（本周或下周）
-    days_until_sunday = (6 - target_date.weekday()) % 7
-    if days_until_sunday == 0 and target_date.weekday() != SUNDAY_WEEKDAY:
-        days_until_sunday = 7
-    current_sunday = target_date + timedelta(days=days_until_sunday)
+    # 如果目标日期在第一周期内
+    if year_start <= target_date <= first_period_end:
+        return {
+            'period_number': 0,
+            'period_start': year_start,
+            'period_end': first_period_end,
+            'year_start': year_start
+        }
     
-    # 计算从周期开始的周数
-    days_from_start = (current_sunday - year_start).days
-    week_number = max(0, days_from_start // 7)
+    # 对于第一周期之后的日期，按14天一个周期计算
+    days_after_first_period = (target_date - first_period_end).days
     
-    # 两周为一个周期
-    period_number = week_number // 2
-    period_start = year_start + timedelta(days=(period_number * DAYS_IN_TWO_WEEKS))
-    period_end = year_start + timedelta(days=(period_number * DAYS_IN_TWO_WEEKS + PERIOD_BUFFER_DAYS))
+    if days_after_first_period <= 0:
+        # 目标日期在第一周期内或之前
+        return {
+            'period_number': 0,
+            'period_start': year_start,
+            'period_end': first_period_end,
+            'year_start': year_start
+        }
     
-    # 确保周期结束日是周日
-    while period_end.weekday() != SUNDAY_WEEKDAY:
-        period_end += timedelta(days=1)
+    # 计算是第几个后续周期（从周期1开始）
+    # days_after_first_period = 1 时应该在周期1的第一天
+    additional_period_index = (days_after_first_period - 1) // DAYS_IN_TWO_WEEKS
+    period_number = additional_period_index + 1
+    
+    # 计算该周期的开始和结束日期
+    period_start = first_period_end + timedelta(days=1) + timedelta(days=additional_period_index * DAYS_IN_TWO_WEEKS)
+    period_end = period_start + timedelta(days=PERIOD_BUFFER_DAYS)
     
     return {
         'period_number': period_number,
