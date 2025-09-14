@@ -475,14 +475,21 @@
                            location.reload();
                        },
                        error: function(xhr, status, error) {
-                            // 尝试将Blob错误响应解析为JSON
-                           if (xhr.responseType === 'blob' && xhr.responseText) {
-                               try {
-                                   const errorJson = JSON.parse(xhr.responseText);
-                                   alert('重置失败：' + (errorJson.message || '未知错误'));
-                               } catch (e) {
+                           // 尝试将Blob错误响应解析为JSON
+                           if (xhr.responseType === 'blob' && xhr.response instanceof Blob) {
+                               const reader = new FileReader();
+                               reader.onload = function() {
+                                   try {
+                                       const errorJson = JSON.parse(reader.result);
+                                       alert('重置失败：' + (errorJson.message || '未知错误'));
+                                   } catch (e) {
+                                       alert('发生未知网络错误，请重试。');
+                                   }
+                               };
+                               reader.onerror = function() {
                                    alert('发生未知网络错误，请重试。');
-                               }
+                               };
+                               reader.readAsText(xhr.response);
                            } else {
                                alert('发生未知网络错误，请重试。');
                            }
