@@ -57,11 +57,23 @@ def get_current_semester_config(conn=None):
                         WHEN '中预' THEN 1
                         WHEN '初一' THEN 2
                         WHEN '初二' THEN 3
-                        WHEN '高一' THEN 4
-                        WHEN '高二' THEN 5
-                        WHEN '高一VCE' THEN 6
-                        WHEN '高二VCE' THEN 7
+                        WHEN '初三' THEN 4
+                        WHEN '高一' THEN 5
+                        WHEN '高二' THEN 6
+                        WHEN '高三' THEN 7
+                        WHEN '高一VCE' THEN 8
+                        WHEN '高二VCE' THEN 9
+                        WHEN '高三VCE' THEN 10
                         ELSE 99
+                    END,
+                    CASE 
+                        WHEN TRIM(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                            class_name, '班', ''), '年级', ''), '中预', ''), '初一', ''), '初二', ''), 
+                            '初三', ''), '高一', ''), '高二', ''), '高三', ''), 'VCE', ''), '') != ''
+                        THEN CAST(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                            class_name, '班', ''), '年级', ''), '中预', ''), '初一', ''), '初二', ''), 
+                            '初三', ''), '高一', ''), '高二', ''), '高三', ''), 'VCE', ''), '') AS INTEGER)
+                        ELSE 0
                     END,
                     class_name
             ''', (semester['id'],))
