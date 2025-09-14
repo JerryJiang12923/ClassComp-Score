@@ -18,6 +18,9 @@ ALTER TABLE scores_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE semester_config ENABLE ROW LEVEL SECURITY;
 ALTER TABLE semester_classes ENABLE ROW LEVEL SECURITY;
 
+-- 启用用户真实姓名表RLS
+ALTER TABLE user_real_names ENABLE ROW LEVEL SECURITY;
+
 -- ====================================
 -- 2. 用户表安全策略
 -- ====================================
@@ -156,6 +159,53 @@ WITH CHECK (
 );
 
 -- ====================================
+-- 6. 用户真实姓名表安全策略
+-- ====================================
+
+-- 用户可以查看自己的真实姓名 (通过 users 表关联)
+CREATE POLICY "Users can view their own real name"
+ON user_real_names FOR SELECT
+TO authenticated
+USING (
+  (SELECT id FROM users WHERE users.username = user_real_names.username)::text = auth.uid()::text
+);
+
+-- 管理员可以查看所有真实姓名
+CREATE POLICY "Admins can view all real names"
+ON user_real_names FOR SELECT
+TO authenticated
+USING (
+  (auth.jwt() ->> 'app_metadata')::json ->> 'role' = 'admin'
+);
+
+-- 用户可以在注册时插入自己的真实姓名
+CREATE POLICY "Users can insert their own real name"
+ON user_real_names FOR INSERT
+TO authenticated
+WITH CHECK (
+  (SELECT id FROM users WHERE users.username = user_real_names.username)::text = auth.uid()::text
+);
+
+-- 用户可以更新自己的真实姓名
+CREATE POLICY "Users can update their own real name"
+ON user_real_names FOR UPDATE
+TO authenticated
+USING (
+  (SELECT id FROM users WHERE users.username = user_real_names.username)::text = auth.uid()::text
+);
+
+-- 管理员可以管理所有真实姓名记录
+CREATE POLICY "Admins can manage all real names"
+ON user_real_names FOR ALL
+TO authenticated
+USING (
+  (auth.jwt() ->> 'app_metadata')::json ->> 'role' = 'admin'
+)
+WITH CHECK (
+  (auth.jwt() ->> 'app_metadata')::json ->> 'role' = 'admin'
+);
+
+-- ====================================
 -- 6. 性能优化索引
 -- ====================================
 
@@ -163,6 +213,7 @@ WITH CHECK (
 CREATE INDEX IF NOT EXISTS idx_users_auth_uid ON users(id);
 CREATE INDEX IF NOT EXISTS idx_scores_user_id ON scores(user_id);
 CREATE INDEX IF NOT EXISTS idx_scores_history_user_id ON scores_history(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_real_names_user_id ON user_real_names(id);
 
 -- ====================================
 -- 说明和注意事项

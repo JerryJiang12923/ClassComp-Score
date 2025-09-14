@@ -4,6 +4,9 @@ import shutil
 import json
 import re
 import platform
+import secrets
+import string
+import io
 from datetime import datetime, timedelta
 from calendar import monthrange
 import pytz
@@ -12,6 +15,7 @@ from flask_cors import CORS
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 import pandas as pd
 from werkzeug.security import generate_password_hash
+from urllib.parse import quote as url_quote
 
 # 导入安全组件
 from security_constants import ALLOWED_GRADES, PERIOD_CONSTANTS, USER_ROLES, SCORE_VALIDATION
@@ -34,8 +38,8 @@ def sanitize_teacher_grade(teacher_grade):
 
 
 from db import get_conn, put_conn
-from models import User, Score
-from forms import LoginForm, RegistrationForm, ScoreForm
+from models import User, Score, UserRealName
+from forms import LoginForm, InfoCommitteeRegistrationForm, ScoreForm
 from period_utils import get_current_semester_config, calculate_period_info
 
 
@@ -146,8 +150,12 @@ def index():
         print(f"Error: {e}")
         current_period = None
     
-    return render_template('index.html', 
-                          user=current_user, 
+    # 从 session 获取真实姓名，提高效率
+    real_name = session.get('real_name', current_user.username)
+
+    return render_template('index.html',
+                          user=current_user,
+                          real_name=real_name,
                           auto_target_grade=target_grade,
                           current_period=current_period)
 
@@ -165,6 +173,21 @@ def login():
             user = User.get_user_by_username(form.username.data, conn)
             if user and user.check_password(form.password.data):
                 login_user(user, remember=form.remember_me.data)
+                
+                # 登录成功后，检查是否需要注册真实姓名
+                if user.role == 'student':
+                    real_name = UserRealName.get_real_name_by_username(user.username, conn)
+                    if not real_name:
+                        # 用户需要注册，先将其登出，然后重定向到注册页面
+                        # 并通过URL参数告知注册页面原因，这种方式比flash更可靠
+                        logout_user()
+                        return redirect(url_for('register', reason='initial_login'))
+                    # 如果已注册，将真实姓名存入session
+                    session['real_name'] = real_name
+                else:
+                    # 非学生用户，使用用户名作为显示名
+                    session['real_name'] = user.username
+
                 next_page = request.args.get('next')
                 return redirect(next_page or url_for('index'))
             else:
@@ -180,6 +203,88 @@ def login():
 def logout():
     logout_user()
     return redirect(url_for('login'))
+
+@app.route('/register', methods=['GET', 'POST'])
+@security_middleware.rate_limit(max_requests=20, window=300) # 5分钟最多20次尝试
+def register():
+    if current_user.is_authenticated:
+        return redirect(url_for('index'))
+    
+    reason = request.args.get('reason')
+    form = InfoCommitteeRegistrationForm()
+    if form.validate_on_submit():
+        conn = get_conn()
+        try:
+            # 1. 根据班级找到对应的学生用户
+            cur = conn.cursor()
+            placeholder = get_db_placeholder()
+            cur.execute(f"SELECT * FROM users WHERE class_name = {placeholder} AND role = 'student'", (form.class_name.data,))
+            user_data = cur.fetchone()
+
+            if not user_data:
+                flash('未找到该班级的学生账户，请联系管理员。', 'error')
+                return render_template('register.html', form=form, reason=reason)
+
+            user = User(user_data['id'], user_data['username'], user_data['role'], user_data['class_name'])
+            user.password_hash = user_data['password_hash']
+
+            # 2. 再次验证初始密码 (安全冗余)
+            if not user.check_password(form.initial_password.data):
+                flash('初始密码校验失败，请返回上一步重试。', 'error')
+                return render_template('register.html', form=form, reason=reason)
+
+            # 3. 更新密码
+            new_password_hash = generate_password_hash(form.new_password.data)
+            cur.execute(f"UPDATE users SET password_hash = {placeholder} WHERE id = {placeholder}", (new_password_hash, user.id))
+
+            # 4. 设置真实姓名
+            UserRealName.set_real_name(user.username, form.real_name.data, conn)
+            
+            conn.commit()
+
+            flash('注册成功！请使用新密码登录。', 'success')
+            return redirect(url_for('login'))
+
+        except Exception as e:
+            conn.rollback()
+            flash(f'注册过程中发生错误: {e}', 'error')
+        finally:
+            put_conn(conn)
+            
+    # 处理 initial_password.errors, class_name.errors 等
+    # 如果表单验证失败，错误会由WTForms自动填充到form对象中，并由模板渲染
+    return render_template('register.html', form=form, reason=reason)
+
+@app.route('/api/validate_initial_password', methods=['POST'])
+@security_middleware.rate_limit(max_requests=30, window=300) # 限制更严格一些
+def validate_initial_password():
+    data = request.get_json()
+    class_name = data.get('class_name')
+    initial_password = data.get('initial_password')
+
+    if not class_name or not initial_password:
+        return jsonify(success=False, message="缺少必要信息"), 400
+
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        placeholder = get_db_placeholder()
+        cur.execute(f"SELECT * FROM users WHERE class_name = {placeholder} AND role = 'student'", (class_name,))
+        user_data = cur.fetchone()
+
+        if not user_data:
+            return jsonify(success=False, message="未找到该班级的学生账户"), 404
+
+        user = User(user_data['id'], user_data['username'], user_data['role'], user_data['class_name'])
+        user.password_hash = user_data['password_hash']
+
+        if user.check_password(initial_password):
+            return jsonify(success=True, username=user.username)
+        else:
+            return jsonify(success=False, message="初始密码错误"), 401
+    finally:
+        put_conn(conn)
+
 
 @app.route('/admin/users', methods=['GET', 'POST'])
 @login_required
@@ -244,6 +349,67 @@ def admin_users():
                 conn.commit()
                 return jsonify(success=True, message=f'用户 {username} 创建成功')
         
+            elif action == 'edit_real_name':
+               username = data.get('username')
+               real_name = data.get('real_name', '') # 允许为空字符串
+               if not username:
+                   return jsonify(success=False, message='缺少用户名'), 400
+               
+               UserRealName.set_real_name(username, real_name, conn)
+               conn.commit()
+               if real_name:
+                   return jsonify(success=True, message='真实姓名更新成功')
+               else:
+                   return jsonify(success=True, message='真实姓名已清空')
+
+            elif action == 'bulk_reset_password':
+               user_ids = data.get('user_ids', [])
+               if not user_ids:
+                   return jsonify(success=False, message='没有选择任何用户')
+
+               new_passwords_data = []
+               for user_id in user_ids:
+                   # 生成6位随机数字密码，确保是字符串
+                   new_password = ''.join(secrets.choice(string.digits) for _ in range(6))
+                   password_hash = generate_password_hash(new_password)
+                   
+                   placeholder = get_db_placeholder()
+                   cur.execute(f"UPDATE users SET password_hash = {placeholder} WHERE id = {placeholder}", (password_hash, user_id))
+                   
+                   cur.execute(f"SELECT username FROM users WHERE id = {placeholder}", (user_id,))
+                   user_record = cur.fetchone()
+                   if user_record:
+                       new_passwords_data.append({'用户名': user_record['username'], '新密码': new_password})
+
+               conn.commit()
+
+               # 创建Excel文件
+               df = pd.DataFrame(new_passwords_data)
+               output = io.BytesIO()
+               with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                   df.to_excel(writer, index=False, sheet_name='新密码')
+                   # 设置密码列为文本格式
+                   workbook = writer.book
+                   worksheet = writer.sheets['新密码']
+                   text_format = workbook.add_format({'num_format': '@'})
+                   worksheet.set_column('B:B', 15, text_format) # B列是新密码
+                   worksheet.set_column('A:A', 20) # A列是用户名
+
+               output.seek(0)
+               
+               timestamp = get_current_time().strftime('%Y%m%d_%H%M%S')
+               download_name = f'密码重置_{timestamp}.xlsx'
+               
+               response = send_file(
+                   output,
+                   as_attachment=True,
+                   download_name=download_name,
+                   mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+               )
+               response.headers['X-Filename'] = url_quote(download_name)
+               response.headers['Access-Control-Expose-Headers'] = 'X-Filename'
+               return response
+
         elif request.method == 'POST':
             # Handle form submission
             username = request.form.get('username')
@@ -273,13 +439,15 @@ def admin_users():
             # SQLite 版本 - 使用 GLOB
             cur.execute('''
                 SELECT u.id, u.username, u.class_name, u.role, u.created_at,
-                       COALESCE(sc.score_count, 0) as score_count
+                       COALESCE(sc.score_count, 0) as score_count,
+                       urn.real_name
                 FROM users u
                 LEFT JOIN (
                     SELECT user_id, COUNT(*) as score_count
                     FROM scores
                     GROUP BY user_id
                 ) sc ON u.id = sc.user_id
+                LEFT JOIN user_real_names urn ON u.username = urn.username
                 ORDER BY 
                     CASE u.role 
                         WHEN 'admin' THEN 1 
@@ -301,13 +469,15 @@ def admin_users():
             # PostgreSQL 版本 - 使用正则表达式
             cur.execute('''
                 SELECT u.id, u.username, u.class_name, u.role, u.created_at,
-                       COALESCE(sc.score_count, 0) as score_count
+                       COALESCE(sc.score_count, 0) as score_count,
+                       urn.real_name
                 FROM users u
                 LEFT JOIN (
                     SELECT user_id, COUNT(*) as score_count
                     FROM scores
                     GROUP BY user_id
                 ) sc ON u.id = sc.user_id
+                LEFT JOIN user_real_names urn ON u.username = urn.username
                 ORDER BY 
                     CASE u.role 
                         WHEN 'admin' THEN 1 
@@ -767,7 +937,7 @@ def my_scores():
                 ORDER BY s.created_at DESC
             ''')
             scores = cursor.fetchall()
-            return render_template('simple_my_scores.html', scores=scores, user=current_user)
+            return render_template('admin_scores.html', scores=scores, user=current_user)
         elif current_user.is_teacher():
             # 教师查看本年级班级本周期评分完成情况
             # 使用学期配置计算当前周期
@@ -802,7 +972,7 @@ def my_scores():
                         COUNT(s.id) as score_count_this_period,
                         MAX(s.created_at) as latest_score_time
                     FROM semester_classes sc
-                    LEFT JOIN users u ON sc.class_name = u.class_name AND u.role = 'student'
+                    LEFT JOIN users u ON sc.class_name = u.class_name
                     LEFT JOIN scores s ON u.id = s.user_id
                         AND {date_func} >= {placeholder}
                         AND {date_func} <= {placeholder}
@@ -947,21 +1117,31 @@ def api_my_scores():
     """获取个人评分历史API"""
     conn = get_conn()
     try:
-        limit = request.args.get('limit', 50, type=int)
-        scores = Score.get_user_scores(current_user.id, conn, limit)
+        limit = request.args.get('limit', 2000, type=int)
         
+        scores = []
+        if current_user.is_admin():
+            # 管理员获取所有评分
+            cur = conn.cursor()
+            placeholder = get_db_placeholder()
+            cur.execute(f'''
+                SELECT s.*, u.username, u.class_name as evaluator_class
+                FROM scores s
+                JOIN users u ON s.user_id = u.id
+                ORDER BY s.created_at DESC
+                LIMIT {placeholder}
+            ''', (limit,))
+            scores = cur.fetchall()
+        else:
+            # 普通用户获取自己的评分
+            scores = Score.get_user_scores(current_user.id, conn, limit)
+
         # 转换为JSON格式
         score_list = []
         for score in scores:
-            # Handle both datetime objects and string formats
-            created_at = score['created_at']
-            if hasattr(created_at, 'strftime'):
-                created_str = created_at.strftime('%Y-%m-%d %H:%M:%S')
-            else:
-                created_str = str(created_at)
-                
             score_list.append({
                 'id': score['id'],
+                'evaluator_name': score.get('username') or score.get('evaluator_name'),
                 'evaluator_class': score['evaluator_class'],
                 'target_grade': score['target_grade'],
                 'target_class': score['target_class'],
@@ -970,10 +1150,78 @@ def api_my_scores():
                 'score3': score['score3'],
                 'total': score['total'],
                 'note': score['note'],
-                'created_at': created_str
+                'created_at': format_datetime_for_display(score['created_at'])
             })
         
-        return jsonify(success=True, scores=score_list)
+        # 获取周期信息用于筛选
+        try:
+            config_data = get_current_semester_config(conn)
+            if config_data:
+                current_period_info = calculate_period_info(semester_config=config_data['semester'])
+                previous_period_info = calculate_period_info(target_date=current_period_info['period_start'] - timedelta(days=1), semester_config=config_data['semester'])
+                period_data = {
+                    'current': {
+                        'start': current_period_info['period_start'].strftime('%Y-%m-%d'),
+                        'end': current_period_info['period_end'].strftime('%Y-%m-%d')
+                    }
+                }
+                # 只有当上一周期的开始时间早于本周期时，才认为它是有效的
+                if previous_period_info['period_start'] < current_period_info['period_start']:
+                    period_data['previous'] = {
+                        'start': previous_period_info['period_start'].strftime('%Y-%m-%d'),
+                        'end': previous_period_info['period_end'].strftime('%Y-%m-%d')
+                    }
+            else:
+                period_data = None
+        except Exception:
+            period_data = None
+
+        return jsonify(success=True, scores=score_list, periods=period_data)
+    finally:
+        put_conn(conn)
+
+@app.route('/api/scores/bulk_action', methods=['POST'])
+@login_required
+def bulk_action_scores():
+    """处理评分的批量操作（归档、删除等）"""
+    if not current_user.is_admin():
+        return jsonify(success=False, message="权限不足"), 403
+
+    data = request.get_json()
+    action = data.get('action')
+    score_ids = data.get('score_ids')
+
+    if not action or not score_ids:
+        return jsonify(success=False, message="缺少必要参数"), 400
+
+    conn = get_conn()
+    try:
+        if action == 'archive':
+            # 批量归档逻辑
+            archived_count = 0
+            for score_id in score_ids:
+                success, error = Score.archive_score(score_id, conn)
+                if success:
+                    archived_count += 1
+            conn.commit()
+            return jsonify(success=True, message=f"成功归档 {archived_count} 条记录")
+        
+        elif action == 'delete':
+            # 批量删除逻辑
+            placeholder = get_db_placeholder()
+            placeholders = ','.join([placeholder for _ in score_ids])
+            cur = conn.cursor()
+            cur.execute(f"DELETE FROM scores WHERE id IN ({placeholders})", score_ids)
+            deleted_count = cur.rowcount
+            conn.commit()
+            return jsonify(success=True, message=f"成功删除 {deleted_count} 条记录")
+            
+        else:
+            return jsonify(success=False, message="无效的操作"), 400
+            
+    except Exception as e:
+        conn.rollback()
+        return jsonify(success=False, message=f"操作失败: {str(e)}"), 500
     finally:
         put_conn(conn)
 
@@ -1625,10 +1873,17 @@ def admin():
                 SELECT s.*, u.username, u.class_name as evaluator_class_name
                 FROM scores s 
                 JOIN users u ON s.user_id = u.id 
-                ORDER BY s.created_at DESC 
+                ORDER BY s.created_at DESC
                 LIMIT 300
             ''')
-        recent_scores = cur.fetchall()
+        recent_scores_raw = cur.fetchall()
+        
+        # 预处理时间戳，确保模板中可以使用strftime
+        recent_scores = []
+        for score in recent_scores_raw:
+            new_score = dict(score)
+            new_score['created_at'] = parse_database_timestamp(score['created_at'])
+            recent_scores.append(new_score)
         
         # 环境信息
         import sys
@@ -2001,7 +2256,9 @@ def admin():
                         GROUP BY {date_format}
                         ORDER BY date
                     ''')
-            daily_trend = cur.fetchall()
+            daily_trend_raw = cur.fetchall()
+            # 确保日期格式统一为 YYYY-MM-DD 字符串，便于前端处理
+            daily_trend = [{'date': row['date'], 'count': row['count']} for row in daily_trend_raw]
         except Exception as trend_error:
             print(f"每日趋势查询失败: {trend_error}")
             daily_trend = []  # 设置为空列表，避免页面崩溃
@@ -2166,4 +2423,8 @@ if __name__ == "__main__":
             print(f"❌ 数据库初始化失败: {init_e}")
             print("请检查数据库配置和权限")
     
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)), debug=False)
+    app.run(
+        host="0.0.0.0",
+        port=int(os.getenv("PORT", 5000)),
+        debug=os.getenv("FLASK_DEBUG", "False").lower() in ("true", "1", "yes")
+    )

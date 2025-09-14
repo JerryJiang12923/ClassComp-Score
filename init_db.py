@@ -77,6 +77,17 @@ def init_database():
                 )
             """)
             
+            # 创建用户真实姓名映射表
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS user_real_names (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username VARCHAR(50) UNIQUE NOT NULL REFERENCES users(username) ON DELETE CASCADE ON UPDATE CASCADE,
+                    real_name VARCHAR(100) NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
         else:
             # PostgreSQL表结构
             cur.execute("""
@@ -129,6 +140,17 @@ def init_database():
                     overwritten_by_score_id INTEGER DEFAULT 0
                 )
             """)
+            
+            # 创建用户真实姓名映射表 (PostgreSQL版本)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS user_real_names (
+                    id SERIAL PRIMARY KEY,
+                    username VARCHAR(50) UNIQUE NOT NULL REFERENCES users(username) ON DELETE CASCADE ON UPDATE CASCADE,
+                    real_name VARCHAR(100) NOT NULL,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
         
         # 创建索引优化查询
         indexes = [
@@ -139,7 +161,8 @@ def init_database():
             "CREATE INDEX IF NOT EXISTS idx_scores_history_original ON scores_history(original_score_id)",
             "CREATE INDEX IF NOT EXISTS idx_scores_history_overwritten ON scores_history(overwritten_by_score_id)",
             "CREATE INDEX IF NOT EXISTS idx_scores_history_user ON scores_history(user_id)",
-            "CREATE INDEX IF NOT EXISTS idx_scores_history_date ON scores_history(original_created_at)"
+            "CREATE INDEX IF NOT EXISTS idx_scores_history_date ON scores_history(original_created_at)",
+            "CREATE INDEX IF NOT EXISTS idx_user_real_names_username ON user_real_names(username)"
         ]
         for index_sql in indexes:
             cur.execute(index_sql)
@@ -277,7 +300,6 @@ def init_database():
         try:
             from create_semester_config import create_semester_tables
             result = create_semester_tables()
-            print("✅ 学期配置表创建完成！")
         except Exception as semester_error:
             print(f"❌ 学期配置表创建失败: {semester_error}")
             import traceback
