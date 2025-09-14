@@ -1598,7 +1598,7 @@ def export_excel():
                 if is_sqlite:
                     history_sql = f"""
                         SELECT 
-                            h.original_
+                            h.original_score_id, h.user_id, h.evaluator_name, h.evaluator_class,
                             h.target_grade, h.target_class, h.score1, h.score2, h.score3, h.total,
                             h.note, h.original_created_at as created_at, h.overwritten_at, h.overwritten_by_score_id
                         FROM scores_history h
