@@ -370,21 +370,46 @@ def admin_users():
                if not user_ids:
                    return jsonify(success=False, message='没有选择任何用户')
 
-               new_passwords_data = []
-               for user_id in user_ids:
-                   # 生成6位随机数字密码，确保是字符串
-                   new_password = ''.join(secrets.choice(string.digits) for _ in range(6))
-                   password_hash = generate_password_hash(new_password)
-                   
-                   placeholder = get_db_placeholder()
-                   cur.execute(f"UPDATE users SET password_hash = {placeholder} WHERE id = {placeholder}", (password_hash, user_id))
-                   
-                   cur.execute(f"SELECT username FROM users WHERE id = {placeholder}", (user_id,))
-                   user_record = cur.fetchone()
-                   if user_record:
-                       new_passwords_data.append({'用户名': user_record['username'], '新密码': new_password})
+               # 检查用户数量，如果过多则需要分批处理
+               if len(user_ids) > 500:
+                   return jsonify(success=False, message='一次最多只能重置500个用户的密码，请分批操作')
 
-               conn.commit()
+               try:
+                   # 批量获取用户信息
+                   placeholder = get_db_placeholder()
+                   user_id_placeholders = ','.join([placeholder] * len(user_ids))
+                   cur.execute(f"SELECT id, username FROM users WHERE id IN ({user_id_placeholders})", user_ids)
+                   users = cur.fetchall()
+                   
+                   if len(users) != len(user_ids):
+                       return jsonify(success=False, message='部分用户不存在，请刷新页面重试')
+
+                   # 分批处理用户，避免一次性处理过多数据
+                   batch_size = 100
+                   new_passwords_data = []
+                   
+                   for i in range(0, len(users), batch_size):
+                       batch_users = users[i:i + batch_size]
+                       batch_update_data = []
+                       
+                       # 为当前批次生成密码
+                       for user in batch_users:
+                           # 生成6位随机数字密码，确保是字符串
+                           new_password = ''.join(secrets.choice(string.digits) for _ in range(6))
+                           password_hash = generate_password_hash(new_password)
+                           
+                           new_passwords_data.append({'用户名': user['username'], '新密码': new_password})
+                           batch_update_data.append((password_hash, user['id']))
+
+                       # 批量更新当前批次的密码
+                       cur.executemany(f"UPDATE users SET password_hash = {placeholder} WHERE id = {placeholder}", batch_update_data)
+                   
+                   # 提交所有更改
+                   conn.commit()
+                   
+               except Exception as e:
+                   conn.rollback()
+                   return jsonify(success=False, message=f'密码重置失败: {str(e)}')
 
                # 创建Excel文件
                df = pd.DataFrame(new_passwords_data)
@@ -1537,9 +1562,16 @@ def export_excel():
                             
                         try:
                             # 创建透视表: 被查班级 vs 评分者班级
-                            # 修复：分开定义行和列的类别，避免不相关的班级出现在矩阵中
-                            target_classes = sorted(grade_df['target_class'].unique())
-                            evaluator_classes = sorted(grade_df['evaluator_class'].unique())
+                            # 使用班级排序工具对班级名称进行正确排序
+                            from class_sorting_utils import extract_class_number
+                            
+                            # 获取唯一的班级名称并使用正确的排序
+                            target_classes_raw = grade_df['target_class'].unique()
+                            evaluator_classes_raw = grade_df['evaluator_class'].unique()
+                            
+                            # 使用班级数字排序
+                            target_classes = sorted(target_classes_raw, key=lambda x: (extract_class_number(x), x))
+                            evaluator_classes = sorted(evaluator_classes_raw, key=lambda x: (extract_class_number(x), x))
                             
                             grade_df['target_class'] = pd.Categorical(grade_df['target_class'], categories=target_classes, ordered=True)
                             grade_df['evaluator_class'] = pd.Categorical(grade_df['evaluator_class'], categories=evaluator_classes, ordered=True)

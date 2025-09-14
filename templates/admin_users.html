@@ -435,16 +435,35 @@
                const userIds = Array.from(selectedUsers);
                if (userIds.length === 0) return;
 
+               // 检查用户数量
+               if (userIds.length > 500) {
+                   alert('一次最多只能重置500个用户的密码，请分批操作。');
+                   return;
+               }
+
                if (confirm(`确定要为选中的 ${userIds.length} 个用户重置为新的随机6位密码吗？\n\n操作成功后将自动下载包含新密码的Excel文件。`)) {
                    // 显示加载指示
                    const btn = $(this);
                    const originalHtml = btn.html();
                    btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>正在生成...');
 
+                   // 显示进度提示
+                   let progressInterval;
+                   let progressCount = 0;
+                   const progressSteps = ['正在生成密码...', '正在更新数据库...', '正在准备下载文件...'];
+                   
+                   if (userIds.length > 50) {
+                       progressInterval = setInterval(() => {
+                           btn.html(`<i class="fas fa-spinner fa-spin me-2"></i>${progressSteps[progressCount % progressSteps.length]}`);
+                           progressCount++;
+                       }, 2000);
+                   }
+
                    $.ajax({
                        url: '/admin/users',
                        type: 'POST',
                        contentType: 'application/json',
+                       timeout: Math.max(60000, userIds.length * 200), // 动态超时：至少60秒，每个用户200ms
                        data: JSON.stringify({
                            action: 'bulk_reset_password',
                            user_ids: userIds
@@ -453,6 +472,11 @@
                            responseType: 'blob' // 关键：期望接收二进制数据
                        },
                        success: function(blob, status, xhr) {
+                           // 清除进度定时器
+                           if (progressInterval) {
+                               clearInterval(progressInterval);
+                           }
+                           
                            // 优先从自定义的X-Filename头获取文件名，解决中文编码问题
                            let filename = "密码重置.xlsx"; // Fallback filename
                            const customFilename = xhr.getResponseHeader('X-Filename');
@@ -471,10 +495,21 @@
                            a.remove();
                            window.URL.revokeObjectURL(url);
                            
-                           alert('密码重置成功，Excel文件已开始下载。');
+                           alert(`成功重置 ${userIds.length} 个用户的密码，Excel文件已开始下载。`);
                            location.reload();
                        },
                        error: function(xhr, status, error) {
+                           // 清除进度定时器
+                           if (progressInterval) {
+                               clearInterval(progressInterval);
+                           }
+                           
+                           // 处理超时错误
+                           if (status === 'timeout') {
+                               alert(`操作超时！选择的用户数量(${userIds.length})较多，请尝试分批重置密码。建议每次不超过100个用户。`);
+                               return;
+                           }
+                           
                            // 尝试将Blob错误响应解析为JSON
                            if (xhr.responseType === 'blob' && xhr.response instanceof Blob) {
                                const reader = new FileReader();
@@ -495,6 +530,10 @@
                            }
                        },
                        complete: function() {
+                           // 清除进度定时器
+                           if (progressInterval) {
+                               clearInterval(progressInterval);
+                           }
                            // 恢复按钮状态
                            btn.prop('disabled', false).html(originalHtml);
                        }
