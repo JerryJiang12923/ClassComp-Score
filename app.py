@@ -972,6 +972,7 @@ def my_scores():
                         COUNT(s.id) as score_count_this_period,
                         MAX(s.created_at) as latest_score_time
                     FROM semester_classes sc
+                    LEFT JOIN users u ON sc.class_name = u.class_name
                     LEFT JOIN scores s ON u.id = s.user_id
                         AND {date_func} >= {placeholder}
                         AND {date_func} <= {placeholder}
