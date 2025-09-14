@@ -199,14 +199,14 @@
                         } else {
                             showAlert(res.message || '验证失败，请重试。');
                         }
+                        nextBtn.prop('disabled', false).html(btnOriginalText);
                     },
                     error: function(xhr) {
                         const errorMsg = xhr.responseJSON ? xhr.responseJSON.message : '网络错误，请稍后重试。';
                         showAlert(errorMsg);
-                    },
-                    complete: function() {
                         nextBtn.prop('disabled', false).html(btnOriginalText);
-                    }
+                    },
+                    // complete callback removed
                 });
             }
 
