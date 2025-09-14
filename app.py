@@ -1199,7 +1199,7 @@ def bulk_action_scores():
             # 批量归档逻辑
             archived_count = 0
             for score_id in score_ids:
-                success = Score.archive_score(score_id, conn)
+                success, error = Score.archive_score(score_id, conn)
                 if success:
                     archived_count += 1
             conn.commit()
