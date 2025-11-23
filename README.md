@@ -7,119 +7,78 @@
 
 **信息委员电脑评分系统**
 
-一个现代化、响应式的学校机房管理评分系统。信息委员学生可以方便地在桌面或移动设备上，定期检查各班级电脑使用情况，对电脑整洁度、物品摆放、使用规范等方面进行评分。系统支持周期性评分、教师监控和数据统计分析。
+一个现代化、响应式的学校机房管理评分系统。信息委员学生可以方便地在桌面或移动设备上，定期检查各班级电脑使用情况，对电脑整洁度、物品摆放、使用规范等方面进行评分。
 
 ---
 
-## ✨ V1.1.0 版本亮点
+## ✨ 核心特性
 
-**V1.1.0 是一次重大的界面和体验升级，核心更新包括：**
-
-- **全面的移动端适配**：所有页面，包括评分、管理面板、教师监控和历史记录，现在都完全支持在手机浏览器上流畅使用。
-- **统一的UI/UX设计**：重构了所有核心组件（卡片、按钮、导航栏、角标），实现了现代化、一致的视觉风格。
-- **增强的管理面板**：为管理员和教师提供了更清晰、更美观的数据图表和统计卡片。
-- **优化的工作流程**：改善了表格的排序、搜索和分页功能，提升了数据管理效率。
-
----
-
-## 核心功能
-
-- **多角色权限系统**:
-    - **学生 (信息委员)**: 登录、评分、查看个人历史。
-    - **教师**: 查看所管理年级的评分进度和统计数据。
-    - **管理员**: 拥有最高权限，管理用户、配置学期、备份数据。
-- **周期性评分**:
-    - 学生在设定的评分周期内对指定年级的班级进行评分。
-    - 同一周期内的重复评分会智能覆盖，并保留历史记录。
-- **数据可视化面板**:
-    - 为教师和管理员提供直观的图表，展示评分总览、今日趋势、年级分布等。
-- **强大的数据管理**:
-    - **用户管理**: 管理员可以轻松创建、删除用户。
-    - **学期配置**: 可视化配置学期、周期和参与班级。
-    - **数据导出**: 一键导出包含详细评分、历史记录和汇总矩阵的 Excel 报告。
-    - **数据备份**: 支持一键备份全站数据为 `.db` (SQLite) 或 `.sql` (PostgreSQL) 文件。
-
----
-
-## 🛠️ 技术栈
-
-- **后端**: Flask
-- **数据库**: SQLite (开发) / PostgreSQL (生产)
-- **前端**: Bootstrap 5, jQuery, Font Awesome
-- **数据处理与导出**: Pandas, XlsxWriter
-- **图表**: Chart.js (通过静态资源引入)
-- **表格**: DataTables.js
-- **WSGI 服务器**: Gunicorn (Linux/macOS) / Waitress (Windows)
+- **多角色权限系统**：干事（信息委员）、教师、管理员三级权限
+- **灵活的周期性评分**：支持单周/双周动态切换，智能覆盖重复评分
+- **实时数据可视化**：直观的图表展示评分总览、趋势和年级分布
+- **完整的数据管理**：用户管理、学期配置、数据导出、一键备份
+- **全面移动端适配**：所有功能完美支持手机浏览器操作
 
 ---
 
 ## 🚀 快速开始
 
-### 1. 环境准备
-- Python 3.9+
-- Git
+详细步骤请查看 [快速开始指南](docs/quick-start.md)
 
-### 2. 克隆与安装
 ```bash
-# 克隆仓库
+# 克隆项目
 git clone https://github.com/your-username/ClassComp-Score.git
 cd ClassComp-Score
 
-# (推荐) 创建并激活虚拟环境
-python -m venv venv
-# Windows
-venv\Scripts\activate
-# macOS/Linux
-source venv/bin/activate
-
 # 安装依赖
 pip install -r requirements.txt
-```
 
-### 3. 配置
-```bash
-# 从模板创建 .env 文件
-# Windows
-copy .env.example .env
-# macOS/Linux
-cp .env.example .env
-```
-打开 `.env` 文件，根据需要修改 `SECRET_KEY`。默认使用 `sqlite:///classcomp.db` 数据库，无需额外配置。
+# 初始化数据库
+python scripts/init_db.py
 
-### 4. 初始化数据库
-这将创建所有必要的表和默认的管理员/测试账户。
-```bash
-python init_db.py
-```
-
-### 5. 启动应用
-```bash
-# 启动开发服务器
+# 启动应用
 python app.py
 ```
-服务将运行在 `http://127.0.0.1:5000`。
+
+访问 `http://127.0.0.1:5000`，使用默认管理员账户登录：`admin` / `admin123`
 
 ---
 
-## 默认账户
+## 📚 文档导航
 
-- **管理员**: `admin` / `admin123`
-- **教师**: `t6` / `123456`
-- **学生**: `g6c1` / `123456`
+| 文档类型 | 链接 | 说明 |
+|---------|------|------|
+| 📖 快速开始 | [docs/quick-start.md](docs/quick-start.md) | 详细的安装和配置步骤 |
+| ✨ 功能特性 | [docs/features.md](docs/features.md) | 完整的功能介绍和截图 |
+| 🚀 部署指南 | [docs/deployment/](docs/deployment/) | 本地和生产环境部署 |
+| 👥 用户手册 | [docs/user-guide/](docs/user-guide/) | 各角色使用指南 |
+| 🔧 开发文档 | [docs/development/](docs/development/) | 架构设计和 API 文档 |
+| 🔍 故障排除 | [docs/troubleshooting.md](docs/troubleshooting.md) | 常见问题解决方案 |
 
 ---
 
-## 部署
+## 🛠️ 技术栈
 
-本项目已为生产环境优化，可使用任何兼容的 WSGI 服务器。
+- **后端**：Flask 2.x
+- **数据库**：SQLite（开发）/ PostgreSQL（生产）
+- **前端**：Bootstrap 5, jQuery, Chart.js
+- **数据处理**：Pandas, XlsxWriter
+- **WSGI 服务器**：Gunicorn（Linux/macOS）/ Waitress（Windows）
 
-**Windows (使用 Waitress):**
-```bash
-waitress-serve --host=0.0.0.0 --port=5000 app:app
-```
+---
 
-**macOS/Linux (使用 Gunicorn):**
-```bash
-gunicorn --workers 4 --bind 0.0.0.0:5000 app:app
-```
-建议将 `render.yaml` 作为在 Render.com 等平台上一键部署的参考。
+## 📄 许可证
+
+本项目采用 [MIT License](LICENSE) 开源协议。
+
+---
+
+## 🤝 贡献
+
+欢迎提交 Issue 和 Pull Request！
+
+## 📞 支持
+
+- 📖 [完整文档](docs/)
+- 🐛 [问题反馈](https://github.com/your-username/ClassComp-Score/issues)
+- 💬 [讨论区](https://github.com/your-username/ClassComp-Score/discussions)

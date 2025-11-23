@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>用户管理 - 信息委员评分系统</title>
+    <link href="{{ url_for('static', filename='bootstrap.min.css') }}" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='custom.css') }}" rel="stylesheet">
+</head>
+<body id="admin-users-page">
+    <nav class="navbar navbar-expand-lg navbar-light navbar-custom">
+        <div class="container">
+            <a class="navbar-brand" href="{{ url_for('index') }}">
+                <i class="fas fa-clipboard-check me-2"></i>
+                信息委员评分系统
+            </a>
+            <div class="navbar-nav ms-auto">
+                <span class="navbar-text me-3">欢迎，{{ user.username }} ({{ user.class_name }})</span>
+                <a class="nav-link" href="{{ url_for('index') }}">
+                    <i class="fas fa-home me-1"></i>返回首页
+                </a>
+                <a class="nav-link" href="{{ url_for('admin') }}">
+                    <i class="fas fa-chart-bar me-1"></i>数据面板
+                </a>
+                <a class="nav-link" href="{{ url_for('admin_semester') }}">
+                    <i class="fas fa-cog me-1"></i>学期设置
+                </a>
+                <a class="nav-link" href="{{ url_for('logout') }}">
+                    <i class="fas fa-sign-out-alt me-1"></i>退出
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container py-4">
+        <h2 class="mb-4">
+            <i class="fas fa-users-cog me-2"></i>
+            校内用户管理系统
+        </h2>
+
+        <!-- 统计卡片 -->
+        <div class="row mb-4 stats-row">
+            <div class="col-6 col-md-3">
+                <div class="card stats-card">
+                    <div class="card-body text-center">
+                        <i class="fas fa-users fa-lg mb-2"></i>
+                        <h5 class="card-title">总用户数</h5>
+                        <p class="card-text h4">{{ users|length }}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="card stats-card">
+                    <div class="card-body text-center">
+                        <i class="fas fa-user-graduate fa-lg mb-2"></i>
+                        <h5 class="card-title">学生用户</h5>
+                        <p class="card-text h4">{{ users|selectattr('role', 'equalto', 'student')|list|length }}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="card stats-card">
+                    <div class="card-body text-center">
+                        <i class="fas fa-chalkboard-teacher fa-lg mb-2"></i>
+                        <h5 class="card-title">教师用户</h5>
+                        <p class="card-text h4">{{ users|selectattr('role', 'equalto', 'teacher')|list|length }}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="card stats-card">
+                    <div class="card-body text-center">
+                        <i class="fas fa-user-shield fa-lg mb-2"></i>
+                        <h5 class="card-title">管理员</h5>
+                        <p class="card-text h4">{{ users|selectattr('role', 'equalto', 'admin')|list|length }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 创建用户表单 -->
+        <div class="card card-custom mb-4" id="create-user-card">
+            <div class="card-header card-header-custom">
+                <h5 class="mb-0">
+                    <i class="fas fa-user-plus me-2"></i>
+                    创建新用户
+                </h5>
+            </div>
+            <div class="card-body">
+                <form id="createUserForm">
+                    <div class="row gy-2">
+                        <div class="col-md-3">
+                            <label class="form-label">用户名</label>
+                            <input type="text" name="username" class="form-control" required 
+                                   placeholder="如：张三" maxlength="20">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">密码</label>
+                            <input type="text" name="password" class="form-control" required 
+                                   placeholder="初始密码" maxlength="20">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">班级</label>
+                            <input type="text" name="class_name" class="form-control" required 
+                                   placeholder="如：中预1班" maxlength="20">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">角色</label>
+                            <select name="role" class="form-select">
+                                <option value="student">学生</option>
+                                <option value="teacher">老师</option>
+                                <option value="admin">管理员</option>
+                            </select>
+                        </div>
+                        <div class="col-md-1">
+                            <label class="form-label">操作</label>
+                            <button type="submit" class="btn btn-primary-custom w-100">
+                                <i class="fas fa-plus"></i>
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- 批量操作 -->
+        <div class="card card-custom mb-4" id="bulk-actions-card">
+            <div class="card-header card-header-custom">
+                <h5 class="mb-0">
+                    <i class="fas fa-tools me-2"></i>
+                    批量操作
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <button type="button" class="btn btn-custom danger" id="bulkDeleteBtn" disabled>
+                            <i class="fas fa-trash me-2"></i>批量删除
+                        </button>
+                        <button type="button" class="btn btn-custom warning" id="bulkResetPasswordBtn" disabled>
+                            <i class="fas fa-key me-2"></i>批量重置密码
+                        </button>
+                        <button type="button" class="btn btn-outline-custom" id="toggleSelectAllBtn">
+                            <i class="fas fa-check-double me-2"></i>全选
+                        </button>
+                        <span id="selectionCounter" class="ms-3 text-muted align-middle"></span>
+                    </div>
+                    <div class="col-md-6 text-end">
+                        <button type="button" class="btn btn-custom" id="exportUsersBtn">
+                            <i class="fas fa-download me-2"></i>导出用户列表
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 用户列表 -->
+        <div class="card card-custom">
+            <div class="card-header card-header-custom">
+                <h5 class="mb-0">
+                    <i class="fas fa-list me-2"></i>
+                    用户列表
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if users %}
+                <div class="table-responsive">
+                    <table class="table table-hover" id="usersTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th width="5%"><input type="checkbox" id="selectAll" class="form-check-input"></th>
+                                <th>用户名</th>
+                                <th>真实姓名</th>
+                                <th>班级</th>
+                                <th>角色</th>
+                                <th class="d-none d-md-table-cell">创建时间</th>
+                                <th class="d-none d-md-table-cell">评分次数</th>
+                                <th width="10%">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for user in users %}
+                            <tr data-user-id="{{ user.id }}" data-username="{{ user.username }}">
+                                <td class="align-middle">
+                                    {% if user.id != current_user.id %}
+                                    <input type="checkbox" class="user-checkbox form-check-input" value="{{ user.id }}">
+                                    {% endif %}
+                                </td>
+                                <td class="align-middle">
+                                    <strong>{{ user.username }}</strong>
+                                    {% if user.id == current_user.id %}
+                                    <span class="d-md-none"><br></span>
+                                    <span class="badge-custom badge-teacher badge-sm">当前用户</span>
+                                    {% endif %}
+                                </td>
+                                <td class="align-middle" data-username="{{ user.username }}" data-realname="{{ user.real_name or '' }}">
+                                    <span class="real-name-text">{{ user.real_name or '-' }}</span>
+                                    <button class="btn btn-sm btn-link edit-real-name-btn" style="padding: 0; vertical-align: baseline;">
+                                        <i class="fas fa-pencil-alt fa-xs"></i>
+                                    </button>
+                                </td>
+                                <td class="align-middle">{{ user.class_name }}</td>
+                                <td class="align-middle">
+                                    {% if user.role == 'admin' %}
+                                        <span class="badge-custom badge-admin badge-sm">管理员</span>
+                                    {% elif user.role == 'teacher' %}
+                                        <span class="badge-custom badge-teacher badge-sm">老师</span>
+                                    {% else %}
+                                        <span class="badge-custom badge-student badge-sm">学生</span>
+                                    {% endif %}
+                                </td>
+                                <td class="d-none d-md-table-cell">{{ user.created_at | format_datetime if user.created_at else '未知' }}</td>
+                                <td class="align-middle d-none d-md-table-cell">
+                                    <span class="badge-custom badge-info badge-sm">{{ user.score_count }}</span>
+                                </td>
+                                <td class="align-middle">
+                                    {% if user.id != current_user.id %}
+                                    <button class="btn btn-sm btn-custom danger action-btn delete-user"
+                                            data-user-id="{{ user.id }}"
+                                            data-username="{{ user.username }}">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                    {% else %}
+                                    <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-4">
+                    <i class="fas fa-users fa-3x text-muted mb-3"></i>
+                    <p class="text-muted">暂无用户</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+     <!-- 编辑真实姓名模态框 -->
+   <div class="modal fade" id="editRealNameModal" tabindex="-1">
+       <div class="modal-dialog">
+           <div class="modal-content card-custom">
+               <div class="modal-header">
+                   <h5 class="modal-title"><i class="fas fa-user-edit me-2"></i>编辑真实姓名</h5>
+                   <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+               </div>
+               <div class="modal-body">
+                   <form id="editRealNameForm">
+                       <div class="mb-3">
+                           <label class="form-label">用户名</label>
+                           <input type="text" id="editUsername" class="form-control" readonly>
+                       </div>
+                       <div class="mb-3">
+                           <label for="editRealName" class="form-label">真实姓名</label>
+                           <input type="text" id="editRealName" class="form-control">
+                       </div>
+                   </form>
+               </div>
+               <div class="modal-footer">
+                   <button type="button" class="btn btn-custom" data-bs-dismiss="modal">取消</button>
+                   <button type="button" class="btn btn-primary-custom" id="saveRealName">保存</button>
+               </div>
+           </div>
+       </div>
+   </div>
+
+     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            let selectedUsers = new Set();
+            let lastSelectedCheckbox = null;
+
+            // 创建用户
+            $('#createUserForm').on('submit', function(e) {
+                e.preventDefault();
+                const formData = new FormData(this);
+                const data = {
+                    action: 'create',
+                    username: formData.get('username'),
+                    password: formData.get('password'),
+                    class_name: formData.get('class_name'),
+                    role: formData.get('role')
+                };
+
+                $.ajax({
+                    url: '/admin/users',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify(data),
+                    success: function(res) {
+                        if (res.success) {
+                            alert(res.message);
+                            location.reload();
+                        } else {
+                            alert('创建失败：' + (res.message || '未知错误'));
+                        }
+                    },
+                    error: function() {
+                        alert('网络错误，请重试');
+                    }
+                });
+            });
+
+           function updateSelectionState(checkbox, shouldBeChecked) {
+               const id = $(checkbox).val();
+               if (shouldBeChecked) {
+                   selectedUsers.add(id);
+               } else {
+                   selectedUsers.delete(id);
+               }
+               $(checkbox).prop('checked', shouldBeChecked);
+               updateButtonsAndCounter();
+           }
+
+           function updateButtonsAndCounter() {
+                const count = selectedUsers.size;
+                $('#bulkDeleteBtn').prop('disabled', count === 0);
+                $('#bulkResetPasswordBtn').prop('disabled', count === 0);
+                $('#selectionCounter').text(count > 0 ? `已选 ${count} 项` : '');
+
+                const btn = $('#toggleSelectAllBtn');
+                const allCheckboxes = $('.user-checkbox:not(:disabled)');
+                const allSelected = allCheckboxes.length > 0 && count === allCheckboxes.length;
+
+                if (allSelected) {
+                    btn.html('<i class="fas fa-times me-2"></i>取消全选');
+                } else {
+                    btn.html('<i class="fas fa-check-double me-2"></i>全选');
+                }
+                
+                // Sync header checkbox
+                const headerCheckbox = $('#selectAll');
+                if (headerCheckbox.prop('checked') !== allSelected) {
+                    headerCheckbox.prop('checked', allSelected);
+                }
+            }
+
+            // 全选/取消全选 (表头)
+            $('#selectAll').on('click', function() {
+                const isChecked = this.checked;
+                $('.user-checkbox:not(:disabled)').each(function() {
+                    updateSelectionState(this, isChecked);
+                });
+            });
+
+            // 全选/取消全选 (按钮)
+            $('#toggleSelectAllBtn').on('click', function() {
+                const allCheckboxes = $('.user-checkbox:not(:disabled)');
+                const isCurrentlyAllSelected = selectedUsers.size === allCheckboxes.length;
+                allCheckboxes.each(function() {
+                    updateSelectionState(this, !isCurrentlyAllSelected);
+                });
+            });
+
+            // 点击行选择
+            $('#usersTable tbody').on('click', 'tr', function(e) {
+                if ($(e.target).is('input[type="checkbox"], a, button, .btn, .fas, .edit-real-name-btn, .fa-pencil-alt')) return;
+                $(this).find('.user-checkbox:not(:disabled)').trigger('click');
+            });
+
+            // Shift多选
+            $('#usersTable tbody').on('click', '.user-checkbox', function(e) {
+                const currentCheckbox = this;
+                if (e.shiftKey && lastSelectedCheckbox) {
+                    const checkboxes = $('#usersTable .user-checkbox:not(:disabled)');
+                    const start = checkboxes.index(currentCheckbox);
+                    const end = checkboxes.index(lastSelectedCheckbox);
+                    checkboxes.slice(Math.min(start, end), Math.max(start, end) + 1).each(function() {
+                        updateSelectionState(this, true);
+                    });
+                } else {
+                    updateSelectionState(this, this.checked);
+                }
+                lastSelectedCheckbox = currentCheckbox;
+            });
+
+            // 单个删除
+            $('#usersTable').on('click', '.delete-user', function() {
+                const userId = $(this).data('user-id');
+                const username = $(this).data('username');
+                if (confirm(`确定要删除用户 ${username} 吗？此操作不可撤销！`)) {
+                    $.ajax({
+                        url: '/admin/users',
+                        type: 'POST',
+                        contentType: 'application/json',
+                        data: JSON.stringify({ action: 'delete', user_id: userId }),
+                        success: function(res) {
+                            if (res.success) {
+                                alert(res.message);
+                                location.reload();
+                            } else {
+                                alert('删除失败：' + (res.message || '未知错误'));
+                            }
+                        },
+                        error: function() {
+                            alert('网络错误，请重试');
+                        }
+                    });
+                }
+            });
+
+            // 批量删除
+            $('#bulkDeleteBtn').click(function() {
+                const userIds = Array.from(selectedUsers);
+                if (userIds.length === 0) return;
+                
+                if (confirm(`确定要删除选中的 ${userIds.length} 个用户吗？此操作不可撤销！`)) {
+                    $.ajax({
+                        url: '/admin/users',
+                        type: 'POST',
+                        contentType: 'application/json',
+                        data: JSON.stringify({ action: 'bulk_delete', user_ids: userIds }),
+                        success: function(res) {
+                            if (res.success) {
+                                alert(res.message);
+                                location.reload();
+                            } else {
+                                alert('删除失败：' + (res.message || '未知错误'));
+                            }
+                        },
+                        error: function() {
+                            alert('网络错误，请重试');
+                        }
+                    });
+                }
+            });
+
+            // 批量重置密码 (V2: 随机密码并导出)
+            $('#bulkResetPasswordBtn').click(function() {
+               const userIds = Array.from(selectedUsers);
+               if (userIds.length === 0) return;
+
+               // 检查用户数量
+               if (userIds.length > 500) {
+                   alert('一次最多只能重置500个用户的密码，请分批操作。');
+                   return;
+               }
+
+               if (confirm(`确定要为选中的 ${userIds.length} 个用户重置为新的随机6位密码吗？\n\n操作成功后将自动下载包含新密码的Excel文件。`)) {
+                   // 显示加载指示
+                   const btn = $(this);
+                   const originalHtml = btn.html();
+                   btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>正在生成...');
+
+                   // 显示进度提示
+                   let progressInterval;
+                   let progressCount = 0;
+                   const progressSteps = ['正在生成密码...', '正在更新数据库...', '正在准备下载文件...'];
+                   
+                   if (userIds.length > 50) {
+                       progressInterval = setInterval(() => {
+                           btn.html(`<i class="fas fa-spinner fa-spin me-2"></i>${progressSteps[progressCount % progressSteps.length]}`);
+                           progressCount++;
+                       }, 2000);
+                   }
+
+                   $.ajax({
+                       url: '/admin/users',
+                       type: 'POST',
+                       contentType: 'application/json',
+                       timeout: Math.max(60000, userIds.length * 200), // 动态超时：至少60秒，每个用户200ms
+                       data: JSON.stringify({
+                           action: 'bulk_reset_password',
+                           user_ids: userIds
+                       }),
+                       xhrFields: {
+                           responseType: 'blob' // 关键：期望接收二进制数据
+                       },
+                       success: function(blob, status, xhr) {
+                           // 清除进度定时器
+                           if (progressInterval) {
+                               clearInterval(progressInterval);
+                           }
+                           
+                           // 优先从自定义的X-Filename头获取文件名，解决中文编码问题
+                           let filename = "密码重置.xlsx"; // Fallback filename
+                           const customFilename = xhr.getResponseHeader('X-Filename');
+                           if (customFilename) {
+                               // 解码URL编码的UTF-8文件名
+                               filename = decodeURIComponent(customFilename);
+                           }
+
+                           // 创建下载链接
+                           const url = window.URL.createObjectURL(blob);
+                           const a = document.createElement('a');
+                           a.href = url;
+                           a.download = filename;
+                           document.body.appendChild(a);
+                           a.click();
+                           a.remove();
+                           window.URL.revokeObjectURL(url);
+                           
+                           alert(`成功重置 ${userIds.length} 个用户的密码，Excel文件已开始下载。`);
+                           location.reload();
+                       },
+                       error: function(xhr, status, error) {
+                           // 清除进度定时器
+                           if (progressInterval) {
+                               clearInterval(progressInterval);
+                           }
+                           
+                           // 处理超时错误
+                           if (status === 'timeout') {
+                               alert(`操作超时！选择的用户数量(${userIds.length})较多，请尝试分批重置密码。建议每次不超过100个用户。`);
+                               return;
+                           }
+                           
+                           // 尝试将Blob错误响应解析为JSON
+                           if (xhr.responseType === 'blob' && xhr.response instanceof Blob) {
+                               const reader = new FileReader();
+                               reader.onload = function() {
+                                   try {
+                                       const errorJson = JSON.parse(reader.result);
+                                       alert('重置失败：' + (errorJson.message || '未知错误'));
+                                   } catch (e) {
+                                       alert('发生未知网络错误，请重试。');
+                                   }
+                               };
+                               reader.onerror = function() {
+                                   alert('发生未知网络错误，请重试。');
+                               };
+                               reader.readAsText(xhr.response);
+                           } else {
+                               alert('发生未知网络错误，请重试。');
+                           }
+                       },
+                       complete: function() {
+                           // 清除进度定时器
+                           if (progressInterval) {
+                               clearInterval(progressInterval);
+                           }
+                           // 恢复按钮状态
+                           btn.prop('disabled', false).html(originalHtml);
+                       }
+                   });
+               }
+           });
+
+            // 导出用户列表
+            $('#exportUsersBtn').click(function() {
+                const csvContent = "用户名,真实姓名,班级,角色,创建时间,评分次数\n" +
+                    $('#usersTable tbody tr').map(function() {
+                        const username = $(this).data('username');
+                        const realName = $(this).find('.real-name-text').text().trim();
+                        const className = $(this).find('td:eq(3)').text();
+                        const role = $(this).find('td:eq(4) .badge').text();
+                        const createdAt = $(this).find('td:eq(5)').text();
+                        const scoreCount = $(this).find('td:eq(6) .badge').text();
+                        return `"${username}","${realName}","${className}","${role}","${createdAt}","${scoreCount}"`;
+                    }).get().join('\n');
+                
+                downloadCsv(csvContent, '用户列表.csv');
+            });
+
+           function downloadCsv(csvContent, fileName) {
+               const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+               const link = document.createElement('a');
+               const url = URL.createObjectURL(blob);
+               link.setAttribute('href', url);
+               link.setAttribute('download', fileName);
+               link.style.visibility = 'hidden';
+               document.body.appendChild(link);
+               link.click();
+               document.body.removeChild(link);
+           }
+       
+           // 编辑真实姓名
+           let currentEditUsername = null;
+           $('#usersTable').on('click', '.edit-real-name-btn', function() {
+               const td = $(this).closest('td');
+               currentEditUsername = td.data('username');
+               const currentRealName = td.data('realname');
+               $('#editUsername').val(currentEditUsername);
+               $('#editRealName').val(currentRealName);
+               $('#editRealNameModal').modal('show');
+           });
+
+           $('#saveRealName').click(function() {
+               const newRealName = $('#editRealName').val().trim();
+               $.ajax({
+                   url: '/admin/users',
+                   type: 'POST',
+                   contentType: 'application/json',
+                   data: JSON.stringify({
+                       action: 'edit_real_name',
+                       username: currentEditUsername,
+                       real_name: newRealName
+                   }),
+                   success: function(res) {
+                       if (res.success) {
+                           alert(res.message);
+                           location.reload();
+                       } else {
+                           alert('更新失败：' + (res.message || '未知错误'));
+                       }
+                   },
+                   error: function() {
+                       alert('网络错误，请重试');
+                   }
+               });
+           });
+        });
+     </script>
+ </body>
+ </html>

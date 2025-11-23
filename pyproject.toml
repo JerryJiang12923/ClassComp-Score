@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "classcomp-score"
+version = "1.1.0"
+description = "信息委员电脑评分系统"
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [
+    {name = "ClassComp Development Team"}
+]
+license = {text = "MIT"}
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+dependencies = [
+    "Flask>=2.0",
+    "Flask-Cors>=3.0",
+    "Flask-Login>=0.6.3",
+    "Flask-WTF>=1.2.1",
+    "WTForms>=3.1.0",
+    "Werkzeug>=2.3.0",
+    "pandas>=2.0",
+    "pytz>=2023.3",
+    "python-dotenv>=1.0",
+    "psycopg2-binary>=2.9",
+    "psutil>=5.9.0",
+    "XlsxWriter>=3.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "gunicorn>=21.2.0",
+    "waitress>=2.1.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>新媒体委员评分 - 信息委员评分系统</title>
+    <link href="{{ url_for('static', filename='bootstrap.min.css') }}" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='custom.css') }}" rel="stylesheet">
+    <style>
+        .grade-selector {
+            margin-bottom: 20px;
+        }
+        .grade-btn {
+            margin: 5px;
+            min-width: 100px;
+        }
+        .graduating-class-indicator {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 8px 15px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            display: inline-block;
+            margin-bottom: 15px;
+        }
+        .graduating-class-indicator i {
+            margin-right: 8px;
+        }
+        .new-media-badge {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            margin-left: 10px;
+        }
+        .info-panel {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar navbar-expand-lg navbar-light navbar-custom">
+        <div class="container">
+            <a class="navbar-brand" href="{{ url_for('index') }}">
+                <i class="fas fa-clipboard-check me-2"></i>
+                信息委员评分系统
+                <span class="new-media-badge">
+                    <i class="fas fa-video"></i> 新媒体
+                </span>
+            </a>
+            <div class="navbar-nav ms-auto">
+                <span class="navbar-text me-3">
+                    欢迎，{{ user.username }} ({{ user.class_name }})
+                </span>
+                <a class="nav-link" href="{{ url_for('my_scores') }}">
+                    <i class="fas fa-history me-1"></i>评分历史
+                </a>
+                <a class="nav-link" href="{{ url_for('logout') }}">
+                    <i class="fas fa-sign-out-alt me-1"></i>退出
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container py-4">
+        <!-- 新媒体委员信息面板 -->
+        <div class="info-panel">
+            <h4><i class="fas fa-info-circle me-2"></i>新媒体委员职责说明</h4>
+            <p class="mb-2">
+                <i class="fas fa-check-circle me-2"></i>您的评分权重为 <strong>1.5倍</strong>，对最终成绩影响更大
+            </p>
+            <p class="mb-2">
+                <i class="fas fa-check-circle me-2"></i>可以对所有年级进行评分，包括毕业班级的专项检查
+            </p>
+            <p class="mb-0">
+                <i class="fas fa-check-circle me-2"></i>评分记录将标记为"新媒体委员"来源，便于追溯
+            </p>
+        </div>
+
+        <!-- 当前周期信息 -->
+        {% if current_period %}
+        <div class="alert alert-info">
+            <i class="fas fa-calendar-alt me-2"></i>
+            当前评分周期：第 {{ current_period.number }} 周期 ({{ current_period.start }} 至 {{ current_period.end }})
+        </div>
+        {% endif %}
+
+        <!-- 年级选择器 -->
+        <div class="card card-custom mb-4">
+            <div class="card-header card-header-custom">
+                <h5 class="mb-0"><i class="fas fa-layer-group me-2"></i>选择年级</h5>
+            </div>
+            <div class="card-body text-center grade-selector">
+                <button class="btn btn-outline-primary grade-btn" onclick="selectGrade('中预')">中预</button>
+                <button class="btn btn-outline-primary grade-btn" onclick="selectGrade('初一')">初一</button>
+                <button class="btn btn-outline-primary grade-btn" onclick="selectGrade('初二')">初二</button>
+                <button class="btn btn-outline-danger grade-btn" onclick="selectGrade('初三')">
+                    初三 <i class="fas fa-graduation-cap"></i>
+                </button>
+                <button class="btn btn-outline-primary grade-btn" onclick="selectGrade('高一')">高一</button>
+                <button class="btn btn-outline-primary grade-btn" onclick="selectGrade('高二')">高二</button>
+                <button class="btn btn-outline-danger grade-btn" onclick="selectGrade('高三')">
+                    高三 <i class="fas fa-graduation-cap"></i>
+                </button>
+                <button class="btn btn-outline-primary grade-btn" onclick="selectGrade('高一VCE')">高一VCE</button>
+                <button class="btn btn-outline-primary grade-btn" onclick="selectGrade('高二VCE')">高二VCE</button>
+                <button class="btn btn-outline-danger grade-btn" onclick="selectGrade('高三VCE')">
+                    高三VCE <i class="fas fa-graduation-cap"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- 毕业班提示 -->
+        <div id="graduating-hint" class="graduating-class-indicator" style="display: none;">
+            <i class="fas fa-graduation-cap"></i>
+            <strong>毕业班级专项检查</strong> - 请特别关注信息素养和规范使用情况
+        </div>
+
+        <!-- 评分表单 -->
+        <div class="card card-custom">
+            <div class="card-header card-header-custom">
+                <h5 class="mb-0">
+                    <i class="fas fa-edit me-2"></i>
+                    <span id="grade-title">请先选择年级</span>
+                </h5>
+            </div>
+            <div class="card-body">
+                <form id="scoreForm">
+                    <input type="hidden" id="selectedGrade" name="target_grade">
+                    <div id="classesContainer" class="mb-3">
+                        <p class="text-muted">请先选择年级</p>
+                    </div>
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-custom btn-lg" id="submitBtn" disabled>
+                            <i class="fas fa-paper-plane me-2"></i>提交评分
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let allClasses = {};
+        let currentGrade = '';
+
+        // 加载学期配置
+        $(document).ready(function() {
+            $.get('/api/semester_config', function(response) {
+                if (response.success) {
+                    allClasses = response.classes;
+                }
+            }).fail(function() {
+                alert('加载班级配置失败，请刷新页面重试');
+            });
+        });
+
+        function selectGrade(grade) {
+            currentGrade = grade;
+            $('#selectedGrade').val(grade);
+            $('#grade-title').text('为 ' + grade + ' 年级评分');
+            
+            // 显示/隐藏毕业班提示
+            const isGraduating = grade === '初三' || grade === '高三' || grade === '高三VCE';
+            $('#graduating-hint').toggle(isGraduating);
+            
+            // 更新活动按钮状态
+            $('.grade-btn').removeClass('btn-primary btn-danger').addClass('btn-outline-primary');
+            $('.grade-btn').filter(function() {
+                return $(this).text().trim().startsWith(grade);
+            }).removeClass('btn-outline-primary btn-outline-danger').addClass(
+                isGraduating ? 'btn-danger' : 'btn-primary'
+            );
+            
+            loadClasses(grade);
+        }
+
+        function loadClasses(grade) {
+            const classes = allClasses[grade] || [];
+            if (classes.length === 0) {
+                $('#classesContainer').html('<p class="text-muted">该年级暂无配置班级</p>');
+                $('#submitBtn').prop('disabled', true);
+                return;
+            }
+
+            let html = '<div class="table-responsive"><table class="table table-hover"><thead class="table-light"><tr>' +
+                      '<th style="width: 25%">班级</th>' +
+                      '<th style="width: 15%">整洁 (0-3)</th>' +
+                      '<th style="width: 15%">摆放 (0-3)</th>' +
+                      '<th style="width: 15%">使用 (0-4)</th>' +
+                      '<th style="width: 30%">备注</th></tr></thead><tbody>';
+
+            classes.forEach(className => {
+                html += `<tr>
+                    <td><strong>${className}</strong></td>
+                    <td><input type="number" class="form-control form-control-sm score-input" 
+                               name="score1_${className}" min="0" max="3" value="3" required></td>
+                    <td><input type="number" class="form-control form-control-sm score-input" 
+                               name="score2_${className}" min="0" max="3" value="3" required></td>
+                    <td><input type="number" class="form-control form-control-sm score-input" 
+                               name="score3_${className}" min="0" max="4" value="4" required></td>
+                    <td><input type="text" class="form-control form-control-sm" 
+                               name="note_${className}" maxlength="50" placeholder="可选"></td>
+                </tr>`;
+            });
+
+            html += '</tbody></table></div>';
+            $('#classesContainer').html(html);
+            $('#submitBtn').prop('disabled', false);
+        }
+
+        $('#scoreForm').on('submit', function(e) {
+            e.preventDefault();
+            
+            const grade = $('#selectedGrade').val();
+            if (!grade) {
+                alert('请先选择年级');
+                return;
+            }
+
+            const classes = allClasses[grade] || [];
+            const scores = [];
+
+            classes.forEach(className => {
+                const score1 = parseInt($(`input[name="score1_${className}"]`).val());
+                const score2 = parseInt($(`input[name="score2_${className}"]`).val());
+                const score3 = parseInt($(`input[name="score3_${className}"]`).val());
+                const note = $(`input[name="note_${className}"]`).val();
+
+                if (isNaN(score1) || isNaN(score2) || isNaN(score3)) {
+                    return;
+                }
+
+                scores.push({
+                    className: className,
+                    score1: score1,
+                    score2: score2,
+                    score3: score3,
+                    note: note
+                });
+            });
+
+            if (scores.length === 0) {
+                alert('请至少为一个班级评分');
+                return;
+            }
+
+            $('#submitBtn').prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i>提交中...');
+
+            $.ajax({
+                url: '/submit_scores',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    target_grade: grade,
+                    scores: scores
+                }),
+                success: function(response) {
+                    if (response.success) {
+                        alert('✅ ' + response.message);
+                        // 重置表单
+                        loadClasses(grade);
+                    } else {
+                        alert('❌ ' + response.message);
+                    }
+                },
+                error: function(xhr) {
+                    alert('提交失败: ' + (xhr.responseJSON?.message || '网络错误'));
+                },
+                complete: function() {
+                    $('#submitBtn').prop('disabled', false).html('<i class="fas fa-paper-plane me-2"></i>提交评分');
+                }
+            });
+        });
+    </script>
+</body>
+</html>

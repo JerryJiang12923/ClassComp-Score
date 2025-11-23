@@ -10,6 +10,10 @@ import io
 from datetime import datetime, timedelta
 from calendar import monthrange
 import pytz
+
+# 添加 src 目录到 Python 路径
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+
 from flask import Flask, request, jsonify, render_template, url_for, send_file, redirect, session, flash
 from flask_cors import CORS
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
@@ -18,12 +22,15 @@ from werkzeug.security import generate_password_hash
 from urllib.parse import quote as url_quote
 
 # 导入安全组件
-from security_constants import ALLOWED_GRADES, PERIOD_CONSTANTS, USER_ROLES, SCORE_VALIDATION
-from input_validator import InputValidator, SQLSafetyHelper
-from security_middleware import security_middleware
+from classcomp.constants import ALLOWED_GRADES, PERIOD_CONSTANTS, USER_ROLES, SCORE_VALIDATION
+from classcomp.utils.validators import InputValidator, SQLSafetyHelper
+from classcomp.middleware import security_middleware
 
 # 导入时间处理工具
-from time_utils import get_current_time, get_local_timezone, parse_database_timestamp, format_datetime_for_display
+from classcomp.utils.time_utils import get_current_time, get_local_timezone, parse_database_timestamp, format_datetime_for_display
+
+# 导入班级排序工具
+from classcomp.utils.class_sorting_utils import generate_class_sorting_sql
 
 # 时区配置
 def validate_grade_input(grade):
@@ -37,10 +44,11 @@ def sanitize_teacher_grade(teacher_grade):
     return teacher_grade
 
 
-from db import get_conn, put_conn
-from models import User, Score, UserRealName
-from forms import LoginForm, InfoCommitteeRegistrationForm, ScoreForm
-from period_utils import get_current_semester_config, calculate_period_info
+from classcomp.database import get_conn, put_conn
+from classcomp.models import User, Score, UserRealName
+from classcomp.forms import LoginForm, InfoCommitteeRegistrationForm, ScoreForm
+from classcomp.utils.period_utils import get_current_semester_config, calculate_period_info
+from classcomp.routes.period_api import period_api as period_bp
 
 
 def add_pangu_spacing(text):
@@ -59,9 +67,15 @@ def get_db_placeholder():
     db_url = os.getenv("DATABASE_URL", "sqlite:///classcomp.db")
     return "?" if db_url.startswith("sqlite") else "%s"
 
-app = Flask(__name__)
+# 配置 Flask 应用的模板和静态文件路径
+template_dir = os.path.join(os.path.dirname(__file__), 'src', 'classcomp', 'templates')
+static_dir = os.path.join(os.path.dirname(__file__), 'src', 'classcomp', 'static')
+app = Flask(__name__, template_folder=template_dir, static_folder=static_dir)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key-change-this')
 CORS(app)
+
+# 注册蓝图
+app.register_blueprint(period_bp)
 
 # Flask-Login配置
 login_manager = LoginManager()
@@ -109,6 +123,27 @@ def index():
     # 教师用户重定向到管理面板，不能评分
     if current_user.is_teacher():
         return redirect(url_for('admin'))
+    
+    # 新媒体委员使用专用界面
+    if current_user.is_new_media_officer():
+        try:
+            config_data = get_current_semester_config()
+            if config_data:
+                period_info = calculate_period_info(semester_config=config_data['semester'])
+                current_period = {
+                    'number': period_info['period_number'] + 1,
+                    'start': period_info['period_start'].strftime('%Y-%m-%d'),
+                    'end': period_info['period_end'].strftime('%Y-%m-%d')
+                }
+            else:
+                current_period = None
+        except Exception as e:
+            print(f"Error: {e}")
+            current_period = None
+        
+        return render_template('new_media_officer_index.html',
+                             user=current_user,
+                             current_period=current_period)
     
     # 根据用户班级自动确定应该评价的年级
 
@@ -367,21 +402,46 @@ def admin_users():
                if not user_ids:
                    return jsonify(success=False, message='没有选择任何用户')
 
-               new_passwords_data = []
-               for user_id in user_ids:
-                   # 生成6位随机数字密码，确保是字符串
-                   new_password = ''.join(secrets.choice(string.digits) for _ in range(6))
-                   password_hash = generate_password_hash(new_password)
-                   
-                   placeholder = get_db_placeholder()
-                   cur.execute(f"UPDATE users SET password_hash = {placeholder} WHERE id = {placeholder}", (password_hash, user_id))
-                   
-                   cur.execute(f"SELECT username FROM users WHERE id = {placeholder}", (user_id,))
-                   user_record = cur.fetchone()
-                   if user_record:
-                       new_passwords_data.append({'用户名': user_record['username'], '新密码': new_password})
+               # 检查用户数量，如果过多则需要分批处理
+               if len(user_ids) > 500:
+                   return jsonify(success=False, message='一次最多只能重置500个用户的密码，请分批操作')
 
-               conn.commit()
+               try:
+                   # 批量获取用户信息
+                   placeholder = get_db_placeholder()
+                   user_id_placeholders = ','.join([placeholder] * len(user_ids))
+                   cur.execute(f"SELECT id, username FROM users WHERE id IN ({user_id_placeholders})", user_ids)
+                   users = cur.fetchall()
+                   
+                   if len(users) != len(user_ids):
+                       return jsonify(success=False, message='部分用户不存在，请刷新页面重试')
+
+                   # 分批处理用户，避免一次性处理过多数据
+                   batch_size = 100
+                   new_passwords_data = []
+                   
+                   for i in range(0, len(users), batch_size):
+                       batch_users = users[i:i + batch_size]
+                       batch_update_data = []
+                       
+                       # 为当前批次生成密码
+                       for user in batch_users:
+                           # 生成6位随机数字密码，确保是字符串
+                           new_password = ''.join(secrets.choice(string.digits) for _ in range(6))
+                           password_hash = generate_password_hash(new_password)
+                           
+                           new_passwords_data.append({'用户名': user['username'], '新密码': new_password})
+                           batch_update_data.append((password_hash, user['id']))
+
+                       # 批量更新当前批次的密码
+                       cur.executemany(f"UPDATE users SET password_hash = {placeholder} WHERE id = {placeholder}", batch_update_data)
+                   
+                   # 提交所有更改
+                   conn.commit()
+                   
+               except Exception as e:
+                   conn.rollback()
+                   return jsonify(success=False, message=f'密码重置失败: {str(e)}')
 
                # 创建Excel文件
                df = pd.DataFrame(new_passwords_data)
@@ -802,12 +862,24 @@ def admin_semester():
                         WHEN '中预' THEN 1 
                         WHEN '初一' THEN 2 
                         WHEN '初二' THEN 3 
-                        WHEN '高一' THEN 4 
-                        WHEN '高二' THEN 5 
-                        WHEN '高一VCE' THEN 6 
-                        WHEN '高二VCE' THEN 7 
-                        ELSE 8 
+                        WHEN '初三' THEN 4 
+                        WHEN '高一' THEN 5 
+                        WHEN '高二' THEN 6 
+                        WHEN '高三' THEN 7 
+                        WHEN '高一VCE' THEN 8 
+                        WHEN '高二VCE' THEN 9 
+                        WHEN '高三VCE' THEN 10 
+                        ELSE 99 
                     END, 
+                    CASE 
+                        WHEN TRIM(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                            class_name, '班', ''), '年级', ''), '中预', ''), '初一', ''), '初二', ''), 
+                            '初三', ''), '高一', ''), '高二', ''), '高三', ''), 'VCE', ''), '') != ''
+                        THEN CAST(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                            class_name, '班', ''), '年级', ''), '中预', ''), '初一', ''), '初二', ''), 
+                            '初三', ''), '高一', ''), '高二', ''), '高三', ''), 'VCE', ''), '') AS INTEGER)
+                        ELSE 0
+                    END,
                     class_name
             ''', (semester['id'], 1))
             classes = cur.fetchall()
@@ -829,6 +901,9 @@ def submit_scores():
     # 教师不能提交评分
     if current_user.is_teacher():
         return jsonify(success=False, message="教师用户无权限提交评分"), 403
+    
+    # 确定数据来源类型
+    source_type = 'new_media_officer' if current_user.is_new_media_officer() else 'info_commissioner'
     
     try:
         data = request.get_json()
@@ -883,7 +958,8 @@ def submit_scores():
                         score2=score2,
                         score3=score3,
                         note=note,
-                        conn=conn
+                        conn=conn,
+                        source_type=source_type
                     )
                     
                     if score_id:
@@ -978,18 +1054,7 @@ def my_scores():
                         AND {date_func} <= {placeholder}
                     WHERE sc.is_active = 1 AND sc.semester_id = (SELECT id FROM semester_config WHERE is_active = 1)
                     GROUP BY sc.class_name, sc.grade_name
-                    ORDER BY
-                        CASE sc.grade_name
-                            WHEN '中预' THEN 1
-                            WHEN '初一' THEN 2
-                            WHEN '初二' THEN 3
-                            WHEN '高一' THEN 4
-                            WHEN '高一VCE' THEN 5
-                            WHEN '高二' THEN 6
-                            WHEN '高二VCE' THEN 7
-                            ELSE 8
-                        END,
-                        sc.class_name
+                    ORDER BY {generate_class_sorting_sql("sc.grade_name", "sc.class_name")}
                 ''', (period_start.strftime('%Y-%m-%d'), period_end.strftime('%Y-%m-%d')))
                 
                 class_status_raw = cursor.fetchall()
@@ -1075,18 +1140,7 @@ def my_scores():
                         AND sc.semester_id = (SELECT id FROM semester_config WHERE is_active = 1)
                         AND sc.grade_name IN ({grade_placeholders})
                     GROUP BY sc.class_name
-                    ORDER BY
-                        CASE MIN(sc.grade_name)
-                            WHEN '中预' THEN 1
-                            WHEN '初一' THEN 2
-                            WHEN '初二' THEN 3
-                            WHEN '高一' THEN 4
-                            WHEN '高二' THEN 5
-                            WHEN '高一VCE' THEN 6
-                            WHEN '高二VCE' THEN 7
-                            ELSE 8
-                        END,
-                        sc.class_name
+                    ORDER BY {generate_class_sorting_sql("MIN(sc.grade_name)", "sc.class_name")}
                 ''', [period_start.strftime('%Y-%m-%d'), period_end.strftime('%Y-%m-%d')] + teacher_grades)
                 class_status_raw = cursor.fetchall()
                 
@@ -1315,6 +1369,7 @@ def export_excel():
             final_params.extend(teacher_grade_params)
         
         if is_sqlite:
+            class_sorting_sql = generate_class_sorting_sql("target_grade", "target_class")
             sql = f"""
                 SELECT
                   id,
@@ -1330,9 +1385,10 @@ def export_excel():
                   created_at
                 FROM scores
                 {final_where_condition}
-                ORDER BY target_grade, target_class, evaluator_class, created_at
+                ORDER BY {class_sorting_sql}, evaluator_class, created_at
             """
         else:
+            class_sorting_sql = generate_class_sorting_sql("target_grade", "target_class")
             sql = f"""
                 SELECT
                   id,
@@ -1348,7 +1404,7 @@ def export_excel():
                   created_at
                 FROM scores
                 {final_where_condition}
-                ORDER BY created_at
+                ORDER BY {class_sorting_sql}, evaluator_class, created_at
             """
         
         # 构建完整的查询参数
@@ -1487,7 +1543,12 @@ def export_excel():
                     for i, display_grade in enumerate(display_grades):
                         grade_data = period_avg[period_avg['display_grade'] == display_grade][['target_class', 'total']].copy()
                         grade_data.columns = ['被查班级', '平均分']
-                        grade_data = grade_data.sort_values('被查班级')
+                        
+                        # 使用自定义排序逻辑对班级进行排序
+                        from classcomp.utils.class_sorting_utils import extract_class_number
+                        grade_data['班级数字'] = grade_data['被查班级'].apply(extract_class_number)
+                        grade_data = grade_data.sort_values(['班级数字', '被查班级'])
+                        grade_data = grade_data.drop('班级数字', axis=1)  # 删除临时列
                         
                         # 添加年级数据
                         summary_data.append(grade_data)
@@ -1537,9 +1598,16 @@ def export_excel():
                             
                         try:
                             # 创建透视表: 被查班级 vs 评分者班级
-                            # 修复：分开定义行和列的类别，避免不相关的班级出现在矩阵中
-                            target_classes = sorted(grade_df['target_class'].unique())
-                            evaluator_classes = sorted(grade_df['evaluator_class'].unique())
+                            # 使用班级排序工具对班级名称进行正确排序
+                            from classcomp.utils.class_sorting_utils import extract_class_number
+                            
+                            # 获取唯一的班级名称并使用正确的排序
+                            target_classes_raw = grade_df['target_class'].unique()
+                            evaluator_classes_raw = grade_df['evaluator_class'].unique()
+                            
+                            # 使用班级数字排序
+                            target_classes = sorted(target_classes_raw, key=lambda x: (extract_class_number(x), x))
+                            evaluator_classes = sorted(evaluator_classes_raw, key=lambda x: (extract_class_number(x), x))
                             
                             grade_df['target_class'] = pd.Categorical(grade_df['target_class'], categories=target_classes, ordered=True)
                             grade_df['evaluator_class'] = pd.Categorical(grade_df['evaluator_class'], categories=evaluator_classes, ordered=True)
@@ -1597,6 +1665,7 @@ def export_excel():
                 
                 # 构建历史记录SQL
                 if is_sqlite:
+                    class_sorting_sql = generate_class_sorting_sql("h.target_grade", "h.target_class")
                     history_sql = f"""
                         SELECT 
                             h.original_score_id, h.user_id, h.evaluator_name, h.evaluator_class,
@@ -1604,9 +1673,10 @@ def export_excel():
                             h.note, h.original_created_at as created_at, h.overwritten_at, h.overwritten_by_score_id
                         FROM scores_history h
                         {history_where_condition}
-                        ORDER BY h.original_created_at, h.overwritten_at
+                        ORDER BY {class_sorting_sql}, h.original_created_at, h.overwritten_at
                     """
                 else:
+                    class_sorting_sql = generate_class_sorting_sql("h.target_grade", "h.target_class")
                     history_sql = f"""
                         SELECT 
                             h.original_score_id, h.user_id, h.evaluator_name, h.evaluator_class,
@@ -1614,7 +1684,7 @@ def export_excel():
                             h.note, h.original_created_at as created_at, h.overwritten_at, h.overwritten_by_score_id
                         FROM scores_history h
                         {history_where_condition}
-                        ORDER BY h.original_created_at, h.overwritten_at
+                        ORDER BY {class_sorting_sql}, h.original_created_at, h.overwritten_at
                     """
                 
                 # 执行历史记录查询
@@ -1650,6 +1720,9 @@ def export_excel():
                         
                         history_month_df['记录类型'] = '历史记录(已覆盖)'
                         history_month_df['评分周期'] = history_month_df['period_number'].apply(lambda x: f"第{x + 1}周期")
+                        # 确保 source_type 列存在
+                        if 'source_type' not in history_month_df.columns:
+                            history_month_df['source_type'] = 'info_commissioner'
                         
                         print(f"✅ 最终历史记录: {len(history_month_df)}条")
                         
@@ -1693,13 +1766,28 @@ def export_excel():
                     print("📝 无历史记录")
                     all_records = current_detail_df
                 
-                # 选择需要显示的列并排序
-                detail_columns = ['记录类型', '评分周期', 'period_end_date', 'evaluator_class', 'target_grade', 'target_class', 'total', 'score1', 'score2', 'score3', 'note', 'created_at']
-                detail_df = all_records[detail_columns].copy()
-                detail_df.columns = ['记录类型', '评分周期', '周期结束日', '评分班级', '被查年级', '被查班级', '总分', '整洁分', '摆放分', '使用分', '备注', '评分时间']
+                # 添加数据来源标记
+                all_records['数据来源'] = all_records.get('source_type', 'info_commissioner').apply(
+                    lambda x: '新媒体委员' if x == 'new_media_officer' else '信息委员'
+                )
                 
-                # 按评分时间顺序排序（解决排序混乱问题）
-                detail_df = detail_df.sort_values(['评分时间', '记录类型'], ascending=[True, False])  # 先按时间，再按类型（当前记录在前）
+                # 选择需要显示的列并排序（添加数据来源列）
+                detail_columns = ['记录类型', '评分周期', 'period_end_date', 'evaluator_class', 'target_grade', 'target_class', 'total', 'score1', 'score2', 'score3', '数据来源', 'note', 'created_at']
+                detail_df = all_records[detail_columns].copy()
+                detail_df.columns = ['记录类型', '评分周期', '周期结束日', '评分班级', '被查年级', '被查班级', '总分', '整洁分', '摆放分', '使用分', '数据来源', '备注', '评分时间']
+                
+                # 按评分时间顺序排序，加入班级排序作为次要条件
+                from classcomp.utils.class_sorting_utils import extract_class_number
+                
+                # 定义年级排序映射
+                grade_order_map = {'中预': 1, '初一': 2, '初二': 3, '初三': 4, '高一': 5, '高二': 6, '高三': 7, '高一VCE': 8, '高二VCE': 9, '高三VCE': 10}
+                
+                detail_df['被查班级数字'] = detail_df['被查班级'].apply(extract_class_number)
+                detail_df['年级排序'] = detail_df['被查年级'].map(grade_order_map).fillna(99)
+                
+                # 多级排序：时间 -> 记录类型 -> 年级排序 -> 被查班级数字 -> 被查班级名
+                detail_df = detail_df.sort_values(['评分时间', '记录类型', '年级排序', '被查班级数字', '被查班级'], ascending=[True, False, True, True, True])
+                detail_df = detail_df.drop(['被查班级数字', '年级排序'], axis=1)  # 删除临时列
                 
                 # 写入Excel前，移除datetime的timezone信息
                 if '评分时间' in detail_df.columns:
@@ -2113,18 +2201,7 @@ def admin():
                                 AND sc.semester_id = (SELECT id FROM semester_config WHERE is_active = 1)
                                 AND sc.grade_name IN ({grade_placeholders})
                             GROUP BY sc.class_name, sc.grade_name
-                            ORDER BY 
-                                CASE sc.grade_name 
-                                    WHEN '中预' THEN 1 
-                                    WHEN '初一' THEN 2 
-                                    WHEN '初二' THEN 3 
-                                    WHEN '高一' THEN 4 
-                                    WHEN '高二' THEN 5 
-                                    WHEN '高一VCE' THEN 6 
-                                    WHEN '高二VCE' THEN 7 
-                                    ELSE 8 
-                                END, 
-                                sc.class_name
+                            ORDER BY {generate_class_sorting_sql("sc.grade_name", "sc.class_name")}
                         ''', [period_start.strftime('%Y-%m-%d'), period_end.strftime('%Y-%m-%d')] + teacher_grades)
                         grade_stats = cur.fetchall()
                     except Exception as semester_error:
@@ -2373,6 +2450,181 @@ def not_found(error):
 def internal_error(error):
     return render_template('500.html'), 500
 
+@app.route('/admin/weight_config')
+@login_required
+def admin_weight_config():
+    """管理员权重配置页面 - 只有管理员可以访问"""
+    if not current_user.is_admin():
+        return "权限不足，只有管理员可以管理权重配置", 403
+    
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        placeholder = get_db_placeholder()
+        
+        # 获取当前活跃配置
+        cur.execute(f"""
+            SELECT * FROM score_weight_config 
+            WHERE is_active = {placeholder}
+            LIMIT 1
+        """, (True,))
+        active_config = cur.fetchone()
+        
+        return render_template('admin_weight_config.html',
+                             user=current_user,
+                             active_config=active_config)
+    finally:
+        put_conn(conn)
+
+
+@app.route('/api/weight_configs', methods=['GET'])
+@login_required
+def api_get_weight_configs():
+    """获取所有权重配置"""
+    if not current_user.is_admin():
+        return jsonify(success=False, message="权限不足"), 403
+    
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, config_name, new_media_weight, info_commissioner_weight,
+                   description, is_active, created_at
+            FROM score_weight_config
+            ORDER BY is_active DESC, created_at DESC
+        """)
+        configs = cur.fetchall()
+        
+        config_list = []
+        for config in configs:
+            config_list.append({
+                'id': config['id'],
+                'config_name': config['config_name'],
+                'new_media_weight': float(config['new_media_weight']),
+                'info_commissioner_weight': float(config['info_commissioner_weight']),
+                'description': config['description'],
+                'is_active': bool(config['is_active'])
+            })
+        
+        return jsonify(success=True, configs=config_list)
+    finally:
+        put_conn(conn)
+
+
+@app.route('/api/weight_configs', methods=['POST'])
+@login_required
+def api_create_weight_config():
+    """创建新的权重配置"""
+    if not current_user.is_admin():
+        return jsonify(success=False, message="权限不足"), 403
+    
+    data = request.get_json()
+    config_name = data.get('config_name')
+    new_media_weight = data.get('new_media_weight', 1.5)
+    info_commissioner_weight = data.get('info_commissioner_weight', 1.0)
+    description = data.get('description', '')
+    is_active = data.get('is_active', False)
+    
+    if not config_name:
+        return jsonify(success=False, message="配置名称不能为空"), 400
+    
+    # 验证权重范围
+    if not (1.0 <= new_media_weight <= 5.0):
+        return jsonify(success=False, message="新媒体权重必须在1.0-5.0之间"), 400
+    if not (1.0 <= info_commissioner_weight <= 5.0):
+        return jsonify(success=False, message="信息委员权重必须在1.0-5.0之间"), 400
+    
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        placeholder = get_db_placeholder()
+        
+        # 如果设为活跃，先停用其他配置
+        if is_active:
+            cur.execute(f"UPDATE score_weight_config SET is_active = {placeholder}", (False,))
+        
+        cur.execute(f"""
+            INSERT INTO score_weight_config 
+            (config_name, new_media_weight, info_commissioner_weight, description, is_active)
+            VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder})
+        """, (config_name, new_media_weight, info_commissioner_weight, description, is_active))
+        
+        conn.commit()
+        return jsonify(success=True, message="配置创建成功")
+    except Exception as e:
+        conn.rollback()
+        return jsonify(success=False, message=f"创建失败: {str(e)}"), 500
+    finally:
+        put_conn(conn)
+
+
+@app.route('/api/weight_configs/<int:config_id>/activate', methods=['PUT'])
+@login_required
+def api_activate_weight_config(config_id):
+    """激活指定的权重配置"""
+    if not current_user.is_admin():
+        return jsonify(success=False, message="权限不足"), 403
+    
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        placeholder = get_db_placeholder()
+        
+        # 先停用所有配置
+        cur.execute(f"UPDATE score_weight_config SET is_active = {placeholder}", (False,))
+        
+        # 激活指定配置
+        cur.execute(f"""
+            UPDATE score_weight_config 
+            SET is_active = {placeholder}, updated_at = CURRENT_TIMESTAMP
+            WHERE id = {placeholder}
+        """, (True, config_id))
+        
+        if cur.rowcount == 0:
+            return jsonify(success=False, message="配置不存在"), 404
+        
+        conn.commit()
+        return jsonify(success=True, message="配置已激活")
+    except Exception as e:
+        conn.rollback()
+        return jsonify(success=False, message=f"激活失败: {str(e)}"), 500
+    finally:
+        put_conn(conn)
+
+
+@app.route('/api/weight_configs/<int:config_id>', methods=['DELETE'])
+@login_required
+def api_delete_weight_config(config_id):
+    """删除指定的权重配置"""
+    if not current_user.is_admin():
+        return jsonify(success=False, message="权限不足"), 403
+    
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        placeholder = get_db_placeholder()
+        
+        # 检查是否是活跃配置
+        cur.execute(f"SELECT is_active FROM score_weight_config WHERE id = {placeholder}", (config_id,))
+        config = cur.fetchone()
+        
+        if not config:
+            return jsonify(success=False, message="配置不存在"), 404
+        
+        if config['is_active']:
+            return jsonify(success=False, message="无法删除活跃配置，请先激活其他配置"), 400
+        
+        cur.execute(f"DELETE FROM score_weight_config WHERE id = {placeholder}", (config_id,))
+        conn.commit()
+        
+        return jsonify(success=True, message="配置已删除")
+    except Exception as e:
+        conn.rollback()
+        return jsonify(success=False, message=f"删除失败: {str(e)}"), 500
+    finally:
+        put_conn(conn)
+
+
 if __name__ == "__main__":
     # 简化的启动逻辑：更可靠的数据库初始化
     try:
@@ -2406,7 +2658,7 @@ if __name__ == "__main__":
             print(f"users表存在: {users_exists is not None}")
             print(f"semester_config表存在: {semester_exists is not None}")
             
-            from init_db import init_database
+            from scripts.init_db import init_database
             init_database()
             print("✅ 数据库初始化完成")
         else:
@@ -2416,7 +2668,7 @@ if __name__ == "__main__":
         print(f"数据库检查失败: {e}")
         print("尝试完整初始化...")
         try:
-            from init_db import init_database
+            from scripts.init_db import init_database
             init_database()
             print("✅ 数据库初始化完成")
         except Exception as init_e:
@@ -2426,5 +2678,5 @@ if __name__ == "__main__":
     app.run(
         host="0.0.0.0",
         port=int(os.getenv("PORT", 5000)),
-        debug=os.getenv("FLASK_DEBUG", "False").lower() in ("true", "1", "yes")
+        debug=True
     )
