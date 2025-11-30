@@ -14,7 +14,7 @@ def ensure_database_initialized():
     print("🔍 检查数据库状态...")
     
     try:
-        from db import get_conn, put_conn
+        from classcomp.database import get_conn, put_conn
         conn = get_conn()
         cur = conn.cursor()
         
@@ -52,7 +52,7 @@ def ensure_database_initialized():
             print(f"  - semester_config表存在: {semester_config_exists is not None}")
             print(f"  - semester_classes表存在: {semester_classes_exists is not None}")
             
-            from init_db import init_database
+            from scripts.init_db import init_database
             init_database()
             print("✅ 数据库初始化完成")
         else:
@@ -62,7 +62,7 @@ def ensure_database_initialized():
         print(f"⚠️ 数据库检查失败: {e}")
         print("🔄 尝试完整初始化...")
         try:
-            from init_db import init_database
+            from scripts.init_db import init_database
             init_database()
             print("✅ 数据库初始化完成")
         except Exception as init_e:

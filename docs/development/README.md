@@ -1,66 +1,164 @@
 # 开发者文档
 
-本目录包含系统架构、API 文档和开发相关资料。
+本目录包含系统架构、API 文档和开发相关资料，面向系统开发者和维护人员。
 
-## 📚 文档列表
+---
 
-### [系统架构设计](architecture.md)
-系统整体架构和技术设计。
-- 系统架构概览
-- 技术栈详解
-- 模块划分
-- 数据流向
-- 安全设计
-- 性能优化策略
+## 📚 文档导航
 
-### [API 接口文档](api-reference.md)
-后端 API 接口说明。
-- RESTful API 规范
-- 认证和授权
-- 接口列表
-- 请求/响应格式
-- 错误处理
+### 实施计划归档
 
-### [数据库设计](database-schema.md)
-数据库表结构和关系设计。
-- 表结构定义
-- 关系图
-- 索引策略
-- 数据迁移
+- [动态周期机制实施方案](implementation-plans/dynamic-period-implementation.md) - 动态评分周期功能的完整实施文档
+- [项目重组计划](implementation-plans/project-restructure.md) - 项目结构优化和重组方案
 
-### [实施计划归档](implementation-plans/)
-历史功能实施方案和项目重组计划。
-- [动态周期机制实施方案](implementation-plans/dynamic-period-implementation.md)
-- [项目重组计划](implementation-plans/project-restructure.md)
+### 系统架构（待补充）
 
-## 🚀 快速开始开发
+以下文档尚未创建，开发者可根据需要补充：
 
-1. **环境准备**
-   - Python 3.9+
-   - 虚拟环境配置
-   - 依赖安装
+- **系统架构设计** - 整体架构和技术栈说明
+- **API 接口文档** - RESTful API 接口详细文档
+- **数据库设计** - 数据表结构和关系设计
 
-2. **代码结构**
-   ```
-   src/classcomp/
-   ├── models/      # 数据模型
-   ├── routes/      # 路由处理
-   ├── utils/       # 工具函数
-   └── templates/   # 前端模板
-   ```
+---
 
-3. **开发流程**
-   - 创建功能分支
-   - 编写代码和测试
-   - 提交 Pull Request
-   - 代码审查和合并
+## 🏗️ 系统架构概览
 
-## 🔧 开发工具
+### 技术栈
 
-- **代码规范**：遵循 PEP 8
-- **测试框架**：pytest
-- **版本控制**：Git
-- **文档工具**：Markdown
+**后端：**
+- Flask 2.x - Web 框架
+- SQLite / PostgreSQL - 数据库
+- Gunicorn / Waitress - WSGI 服务器
+- Pandas, XlsxWriter - 数据处理
+
+**前端：**
+- Bootstrap 5 - UI 框架
+- jQuery - JavaScript 库
+- Chart.js - 数据可视化
+- DataTables - 表格组件
+
+### 项目结构
+
+```
+ClassComp-Score/
+├── src/classcomp/           # 主应用包
+│   ├── models/              # 数据模型（待创建）
+│   ├── routes/              # 路由处理
+│   │   └── period_api.py    # 周期相关 API
+│   ├── utils/               # 工具函数
+│   │   ├── period_utils.py  # 周期计算工具
+│   │   ├── scoring_utils.py # 评分处理工具
+│   │   └── time_utils.py    # 时间处理工具
+│   ├── forms/               # 表单定义
+│   ├── middleware/          # 中间件
+│   │   └── security.py      # 安全中间件
+│   ├── templates/           # HTML 模板
+│   ├── static/              # 静态资源
+│   └── database/            # 数据库连接
+├── scripts/                 # 工具脚本
+│   ├── init_db.py          # 数据库初始化
+│   ├── reset_password.py   # 密码重置
+│   └── deployment/         # 部署相关脚本
+├── config/                  # 配置文件
+├── docs/                    # 文档
+└── tests/                   # 测试（待补充）
+```
+
+### 核心模块说明
+
+#### 1. 用户角色系统
+
+系统支持三种用户角色：
+
+| 角色代码 | 角色名称 | 评分权重 | 主要职责 |
+|---------|---------|---------|---------|
+| `student` | 信息委员 | 1.0x | 按评分链条对班级评分 |
+| `new_media_officer` | 新媒体委员 | 1.5x | 对所有年级评分，进行毕业班专项检查 |
+| `admin` | 管理员 | - | 系统管理、配置、数据导出 |
+
+#### 2. 评分链条机制
+
+**中学部链条：**
+- 中预 → 初一 → 初二 → 中预
+- 高一 ↔ 高二
+- 高一VCE ↔ 高二VCE
+
+**小学部：**
+- 各年级独立评分
+
+#### 3. 动态周期系统
+
+支持单周（7天）和双周（14天）两种评分周期，可在学期中动态切换。详见 [动态周期实施方案](implementation-plans/dynamic-period-implementation.md)。
+
+---
+
+## 🚀 开发快速开始
+
+### 1. 环境准备
+
+```bash
+# 克隆项目
+git clone https://github.com/your-username/ClassComp-Score.git
+cd ClassComp-Score
+
+# 创建虚拟环境
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+
+# 安装依赖
+pip install -r requirements.txt
+```
+
+### 2. 配置环境
+
+```bash
+# 复制环境变量模板
+cp .env.example .env
+
+# 编辑 .env 文件
+SECRET_KEY=your-secret-key
+DATABASE_URL=sqlite:///classcomp.db
+```
+
+### 3. 初始化数据库
+
+```bash
+python scripts/init_db.py
+```
+
+### 4. 启动开发服务器
+
+```bash
+# 开发模式（支持热重载）
+python app.py
+
+# 访问 http://127.0.0.1:5000
+```
+
+---
+
+## 🔧 开发规范
+
+### 代码风格
+
+- 遵循 PEP 8 Python 代码规范
+- 使用有意义的变量和函数名
+- 添加必要的注释和文档字符串
+- 保持函数简洁，单一职责
+
+### Git 工作流
+
+1. 从 main 分支创建功能分支
+2. 在功能分支上开发和测试
+3. 提交有意义的 commit message
+4. 创建 Pull Request 进行代码审查
+5. 通过审查后合并到 main
+
+### 测试要求
+
+- 为核心功能编写单元测试
+- 测试覆盖率目标：70%+
+- 测试框架：pytest（待补充）
 
 ## 📞 开发支持
 

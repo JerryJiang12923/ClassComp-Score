@@ -51,7 +51,7 @@ def check_database_connection():
     print("🔍 检查数据库连接和表结构...")
     
     try:
-        from db import get_conn, put_conn
+        from classcomp.database import get_conn, put_conn
             
         conn = get_conn()
         cur = conn.cursor()
@@ -121,7 +121,7 @@ def check_database_connection():
         if missing_tables or missing_semester_tables:
             print("🔧 检测到缺失的表，尝试初始化数据库...")
             try:
-                from init_db import init_database
+                from scripts.init_db import init_database
                 init_database()
                 print("✅ 数据库初始化完成")
             except Exception as init_error:
@@ -131,7 +131,7 @@ def check_database_connection():
             # 即使表存在，也要确保管理员密码是最新的
             print("🔧 检查管理员账户密码...")
             try:
-                from reset_admin_password import reset_admin_password
+                from scripts.reset_password import reset_password as reset_admin_password
                 reset_admin_password()
             except Exception as admin_error:
                 print(f"⚠️ 管理员密码检查失败: {admin_error}")

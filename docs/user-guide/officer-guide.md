@@ -326,7 +326,8 @@
 ## 📚 相关文档
 
 - [管理员使用手册](admin-guide.md)
-- [教师使用手册](teacher-guide.md)
+- [信息委员使用手册](info-commissioner-guide.md)
+- [新媒体委员使用手册](new-media-officer-guide.md)
 - [功能特性](../features.md)
 - [快速开始](../quick-start.md)
 
